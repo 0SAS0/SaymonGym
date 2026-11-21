@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// 1.4.5: the app takes on the logo's green (#a3e635). A profile started from nothing wears it; a
+// SaymonGym: a profile started from nothing wears its teal brand accent; a
 // profile that already exists keeps exactly the accent it had, whichever way its copy reaches the
 // app: the browser's saved copy, the phone's file mirror, a server pull, a sign-in, a backup, a
 // merge with another device, an older app on the other end. The rule is the one weighIn and
@@ -22,17 +22,17 @@ const blank = () => ({ workouts: [], routines: [], bodyweight: [], customEx: [] 
 const KEY = 'gym_state_v1'
 
 describe('the two defaults', () => {
-  it('a new profile gets the brand green, everything that never picked keeps the old one', () => {
+  it('a new profile gets the brand teal, everything that never picked keeps the old one', () => {
     expect(NEW_ACCENT).toBe('brand')
     expect(DEFAULT_ACCENT).toBe('lime')
-    expect(ACCENTS.brand).toBe('#a3e635')
+    expect(ACCENTS.brand).toBe('#42e8c1')
     expect(ACCENTS.lime).toBe('#30d158')
     expect(DEF.accent).toBe('lime')
   })
-  it('the brand green comes first in the picker, the old one stays as Classic green', () => {
+  it('the brand teal comes first in the picker, the old one stays as Classic green', () => {
     expect(Object.keys(ACCENTS)[0]).toBe('brand')
     expect(Object.keys(ACCENTS)[1]).toBe('lime')
-    expect(ACCENT_NAMES.brand).toBe('openGym green')
+    expect(ACCENT_NAMES.brand).toBe('SaymonGym teal')
     expect(ACCENT_NAMES.lime).toBe('Classic green')
     expect(Object.keys(ACCENT_NAMES)).toEqual(Object.keys(ACCENTS))
     expect(Object.keys(ACCENT_INK)).toEqual(Object.keys(ACCENTS))
@@ -144,15 +144,15 @@ describe('another account on this device', () => {
   })
 })
 
-describe('the brand green everywhere it is drawn', () => {
+describe('the brand teal everywhere it is drawn', () => {
   it('carries the brand’s near-black, readable well past the 4.5:1 text bar', () => {
-    expect(accentPair('brand')).toEqual({ accent: '#a3e635', ink: '#0c0e12' })
-    expect(contrast('#a3e635', '#0c0e12')).toBeGreaterThan(12)
+    expect(accentPair('brand')).toEqual({ accent: '#42e8c1', ink: '#071713' })
+    expect(contrast('#42e8c1', '#071713')).toBeGreaterThan(11)
   })
   it('goes to the watches as it is, with its ink', () => {
-    expect(watchAccent({ accent: 'brand' })).toEqual({ accent: '#a3e635', onAccent: '#0c0e12' })
+    expect(watchAccent({ accent: 'brand' })).toEqual({ accent: '#42e8c1', onAccent: '#071713' })
     expect(watchAccent({ accent: 'lime' })).toEqual({ accent: '#30d158', onAccent: '#000000' })
-    expect(garminLook(watchAccent({ accent: 'brand' }))).toMatchObject({ accent: '#a3e635', onAccent: '#0c0e12' })
+    expect(garminLook(watchAccent({ accent: 'brand' }))).toMatchObject({ accent: '#42e8c1', onAccent: '#071713' })
   })
   it('the ink of every preset reads at 3:1 (button text, large) or better on its swatch', () => {
     for (const [k, c] of Object.entries(ACCENTS)) expect(contrast(c, ACCENT_INK[k]), k).toBeGreaterThanOrEqual(3)

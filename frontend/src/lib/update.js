@@ -53,6 +53,8 @@ function compareSemver(a, b) {
 let cached = null
 export function resetUpdateCheck() { cached = null }
 export async function checkForUpdate() {
+  // A branded fork must never offer the upstream project's APK to the package installer.
+  if (__APP_BRAND__ !== 'openGym') return { hasUpdate: false, latestVersion: __APP_VERSION__, apkUrl: null, hashUrl: null }
   if (!cached) cached = fetchLatest().catch(e => { cached = null; throw e })
   return cached
 }

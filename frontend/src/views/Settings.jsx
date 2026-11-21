@@ -1,4 +1,5 @@
 import { showsDashboard } from '../lib/trainer-api.js'
+import BrandLogo from '../components/BrandLogo.jsx'
 import { recordHintsOn } from '../lib/set-records.js'
 import { setRecoveryHint } from '../lib/recovery-hint.js'
 import { useEffect, useRef, useState, forwardRef, useSyncExternalStore } from 'react'
@@ -270,7 +271,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
       setAndroid(ok)
       setIos(!ok)
       const channel = ok ? await getChannel() : null
-      const own = channel === 'sideload'
+      const own = channel === 'sideload' && __APP_BRAND__ === 'openGym'
       setSelfUpdate(own)
       setPlay(channel === 'play')
       setFdroid(channel === 'fdroid' || channel === 'offline')
@@ -1275,6 +1276,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
     </>,
 
     about: () => <>
+      <div className="card about-brand"><BrandLogo size={25} /></div>
       {/* Updates. On Android the row is always there: it checks on demand and installs when a
           release is newer (checksum verified, see onUpdateRowClick). On the web the app updates
           with its server, so the row points at the APK for the phone instead. iOS and the Google

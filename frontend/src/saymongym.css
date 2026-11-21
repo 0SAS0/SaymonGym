@@ -1,0 +1,66 @@
+/* SaymonGym visual layer. Keep the existing component system and its light theme intact. */
+:root:not([data-theme="light"]) {
+  --bg: #0B1118;
+  --bg-el: #0e1720;
+  --surface: #121d27;
+  --surface-2: #192733;
+  --surface-3: #263643;
+  --surface-raised: #192733;
+  --raised-line: rgba(221, 245, 255, .11);
+  --label: #f3f8fb;
+  --label-2: rgba(224, 237, 245, .68);
+  --label-3: rgba(224, 237, 245, .42);
+  --sep: rgba(159, 190, 207, .18);
+  --sep-op: rgba(159, 190, 207, .12);
+  --acc: #42E8C1;
+  --acc-2: #168e79;
+  --acc-ink: #42E8C1;
+  --on-acc: #071713;
+  --r-card: 20px;
+  --r-xl: 26px;
+  --pad: 18px;
+}
+
+:root:not([data-theme="light"]) body { background: var(--bg); }
+:root:not([data-theme="light"]) .card {
+  border: 1px solid rgba(175, 210, 226, .08);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .13);
+}
+.home-heading { min-width: 0; }
+.home-heading h1 { margin-top: 4px; }
+.home-brand { display: inline-flex; align-items: center; }
+.about-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+.brand-lockup { letter-spacing: -.04em; }
+.brand-lockup-mark { width: 1.05em; height: 1.05em; vertical-align: -.18em; margin-inline-end: .18em; fill: #42E8C1; }
+.brand-lockup-open { color: #f3f8fb; }
+.brand-lockup-gym { color: #42E8C1; }
+:root[data-theme="light"] .brand-lockup-open { color: #12151b; }
+
+#tabbar {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  background: rgba(14, 23, 32, .96);
+  border-top: 1px solid var(--sep-op);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+}
+#tabbar button { min-height: 52px; }
+#tabbar button.on:not(.start) { color: var(--acc-ink); }
+#tabbar button.on:not(.start) .tab-ic { background: var(--acc-soft); border-radius: 14px; }
+#tabbar .start .cir { box-shadow: 0 5px 18px rgba(66, 232, 193, .22); }
+
+.workout-list .setrow { gap: 9px; padding-block: 9px; }
+.workout-list .setrow .stp .num { min-height: 48px; font-size: max(var(--fs-body), 1.0625rem); }
+.workout-list .setrow .stp button { min-height: 48px; }
+.workout-list .setrow .chk { min-width: 42px; min-height: 48px; }
+.whdr-name { font-size: var(--fs-body); }
+#timer { border: 1px solid var(--acc-line); border-radius: 20px; }
+
+@media (max-width: 380px) {
+  :root { --pad: 14px; }
+  #tabbar button { min-height: 48px; }
+  #tabbar .start { min-width: 56px; }
+  .workout-list .setrow { gap: 5px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card, #tabbar button { transition: border-color var(--med) var(--ease), background-color var(--med) var(--ease), transform var(--fast) var(--ease); }
+}

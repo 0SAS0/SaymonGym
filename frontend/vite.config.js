@@ -102,11 +102,12 @@ const flavor = {
 // nothing: the string is exactly package.json's version.
 const pkgVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
 const appVersion = process.env.APP_BUILD ? `${pkgVersion}+${process.env.APP_BUILD}` : pkgVersion
+const appBrand = process.env.NODE_ENV === 'test' ? 'openGym' : (process.env.VITE_APP_BRAND || 'SaymonGym')
 
 export default defineConfig({
   // __SEASON_CLOCK__: the seasonal QA date hook (src/lib/season-clock.js), only in a build made
   // with VITE_SEASON_CLOCK=1 for screenshots. false everywhere else, so the hook is compiled out.
-  define: { __APP_VERSION__: JSON.stringify(appVersion), __SEASON_CLOCK__: JSON.stringify(process.env.VITE_SEASON_CLOCK === '1') },
+  define: { __APP_VERSION__: JSON.stringify(appVersion), __APP_BRAND__: JSON.stringify(appBrand), __SEASON_CLOCK__: JSON.stringify(process.env.VITE_SEASON_CLOCK === '1') },
   plugins: [react(), umami, flavor, swStamp, catalogueMedia],
   base: './',
   server: {
