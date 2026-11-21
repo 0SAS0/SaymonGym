@@ -98,8 +98,10 @@ describe('tn() — plural forms from the pack', () => {
 
   it('says "3 treningi" in Polish and "3 дні" in Ukrainian', () => {
     _setLangState('pl', pl, null, null)
-    expect(tn('{0} workout', '{0} workouts', 3)).toBe('3 treningi')
+    expect(tn('{0} workout', '{0} workouts', 1)).toBe('1 trening')
+    expect(tn('{0} workout', '{0} workouts', 2)).toBe('2 treningi')
     expect(tn('{0} workout', '{0} workouts', 5)).toBe('5 treningów')
+    expect(tn('{0} workout', '{0} workouts', 3)).toBe('3 treningi')
     expect(tn('{0} workout', '{0} workouts', 22)).toBe('22 treningi')
     expect(tn('{0} workout total', '{0} workouts total', 3)).toBe('łącznie 3 treningi')
     _setLangState('uk', uk, null, null)

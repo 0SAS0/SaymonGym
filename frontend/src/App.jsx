@@ -48,6 +48,7 @@ import { installViewportGuard } from './lib/viewport-guard.js'
 import { installChipDrag } from './lib/hchips.js'
 import { syncPushSubscription } from './lib/push.js'
 import { MOBILE, nativePlatform } from './lib/mobile.js'
+import { platformNow } from './lib/platform-now.js'
 import { isOn } from './lib/modules.js'
 import { useTour } from './lib/tour.js'
 import { useTourOffer } from './lib/tour-offer.js'
@@ -246,7 +247,7 @@ function Shell() {
   // A profile that never picked a language follows the instance default or the browser (#303) —
   // worked out here, on this device, and never written into the synced state (lib/default-lang.js).
   const config = useStore(s => s.config)
-  const lang = effectiveLang(S, config)
+  const lang = effectiveLang(S, config, undefined, MOBILE && platformNow() === 'android')
   useEffect(() => { setLang(lang, S.enParens?.[baseLang(lang)] ?? true, S.enOnly?.[baseLang(lang)] === true) }, [lang, S.enParens, S.enOnly])
   // Same shape as the language: a module-level display setting, pushed when it changes (#139).
   // The profile's weight step (Settings → Weight step, lib/weight-step.js) stands in for each lift's

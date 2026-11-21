@@ -10,10 +10,10 @@ const androidEnglish = {
   rest_channel_name: 'Rest timer',
   rest_quiet_channel_name: 'Rest timer, without vibration',
   rest_channel_desc: 'Rest between sets, in the notification shade. The lock screen shows it only when notifications are allowed there.',
+  workout_channel_name: 'Workout in progress',
+  workout_channel_desc: 'The workout you are doing right now: the next set, the rest and Log set, without opening the app.',
 }
 const androidKeys = Object.keys(androidEnglish)
-// Translated where someone did it (Italian, #760), English elsewhere: allowed, not required.
-const androidOptional = ['workout_channel_name', 'workout_channel_desc']
 const usageKeys = ['NSCameraUsageDescription', 'NSMicrophoneUsageDescription', 'NSPhotoLibraryAddUsageDescription']
 const errors = []
 const fail = message => errors.push(message)
@@ -29,7 +29,7 @@ function readAndroidStrings(file, locale) {
   for (const key of androidKeys) {
     if (names.filter(name => name === key).length !== 1) fail(`${locale}: expected one Android ${key}`)
   }
-  if (locale === 'Italian' && names.some(name => !androidKeys.includes(name) && !androidOptional.includes(name))) fail(`${locale}: unexpected Android string key`)
+  if (locale !== 'English fallback' && names.some(name => !androidKeys.includes(name))) fail(`${locale}: unexpected Android string key`)
   if (entries.some(([, , value]) => !value.trim())) fail(`${locale}: empty Android string value`)
   return new Map(entries.map(([, key, value]) => [key, value]))
 }
@@ -65,12 +65,14 @@ function readIosStrings(locale) {
   return entries
 }
 
-// Android's default values are the English fallback; only Italian has an override.
+// Android's default values are the English fallback; Italian and Polish have overrides.
 const englishAndroid = readAndroidStrings(join(androidRoot, 'values/strings.xml'), 'English fallback')
 const italianAndroid = readAndroidStrings(join(androidRoot, 'values-it/strings.xml'), 'Italian')
+const polishAndroid = readAndroidStrings(join(androidRoot, 'values-pl/strings.xml'), 'Polish')
 for (const [key, value] of Object.entries(androidEnglish)) {
   if (englishAndroid?.get(key) !== value) fail(`${key}: English fallback changed`)
   if (italianAndroid?.get(key) === value) fail(`${key}: Italian must have localized copy`)
+  if (polishAndroid?.get(key) === value) fail(`${key}: Polish must have localized copy`)
 }
 const englishIos = readIosStrings('en')
 const italianIos = readIosStrings('it')
@@ -97,5 +99,5 @@ if (errors.length) {
   console.error(errors.map(error => `✗ ${error}`).join('\n'))
   process.exitCode = 1
 } else {
-  console.log('Native localization resources cover English fallback and Italian.')
+  console.log('Native localization resources cover English fallback, Italian and Polish.')
 }

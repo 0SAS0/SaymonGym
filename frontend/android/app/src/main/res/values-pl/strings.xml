@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rest_countdown_channel_name">Odliczanie odpoczynku</string>
+    <string name="rest_channel_name">Czas odpoczynku</string>
+    <string name="rest_quiet_channel_name">Odpoczynek bez wibracji</string>
+    <string name="rest_channel_desc">Przerwa między seriami wyświetlana w panelu powiadomień. Na ekranie blokady pojawia się tylko wtedy, gdy powiadomienia są tam dozwolone.</string>
+    <string name="workout_channel_name">Trening w toku</string>
+    <string name="workout_channel_desc">Trening, który właśnie wykonujesz: następna seria, odpoczynek i zapis serii — bez otwierania aplikacji.</string>
+</resources>

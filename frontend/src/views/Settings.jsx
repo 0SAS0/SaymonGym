@@ -181,7 +181,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
   const community = useStore(st => libraryOn(st.config, st.user) && isOn(st.S, 'community'))
   // What the app is showing, which for a profile that never picked a language is worked out on
   // this device rather than stored (#303).
-  const lang = effectiveLang(S, config)
+  const lang = effectiveLang(S, config, undefined, MOBILE && platformNow() === 'android')
   // This profile's passkeys and the code for another device (#95). A change to them is read back
   // here and by the password row, whose "Remove" depends on there being a passkey.
   // On a paired phone only the code for another device uses it (#551).
