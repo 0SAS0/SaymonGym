@@ -33,8 +33,9 @@ export function matchLocale(tag) {
 }
 
 /** The language a copy that never chose one should be in, or null for a copy that chose. */
-export function autoLang(S, config, navLangs = []) {
+export function autoLang(S, config, navLangs = [], polishAndroidDefault = false) {
   if (!S || S.langAuto !== true) return null
+  if (polishAndroidDefault) return 'pl'
   return matchLocale(config?.default_lang)
     || (navLangs || []).map(matchLocale).find(Boolean)
     || 'en'
@@ -56,16 +57,19 @@ function cachedDefaultLang() {
  * picked one, what autoLang says. Before the config is in, the default this device last saw
  * stands in for it; with none seen yet the copy's stored language is used unchanged.
  */
-export function effectiveLang(S, config, navLangs = browserLangs()) {
+export function effectiveLang(S, config, navLangs = browserLangs(), polishAndroidDefault = false) {
   const own = (S && typeof S.lang === 'string' && S.lang) || 'en'
   if (!S || S.langAuto !== true) return own
+  // The native Android build owns its first-run default. Apply it before the cached config path:
+  // a brand-new offline install has not seen /api/config and must not remain in stored English.
+  if (polishAndroidDefault) return 'pl'
   let cfg = config
   if (!cfg) {
     const seen = cachedDefaultLang()
     if (seen === null) return own
     cfg = { default_lang: seen }
   }
-  return autoLang(S, cfg, navLangs) || own
+  return autoLang(S, cfg, navLangs, polishAndroidDefault) || own
 }
 
 export function browserLangs() {

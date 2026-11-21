@@ -14,6 +14,11 @@ describe('effectiveLang', () => {
     expect(effectiveLang({ lang: 'de' }, { default_lang: 'fr' }, ['it'])).toBe('de')
     expect(effectiveLang({ lang: 'en' }, { default_lang: 'fr' }, ['it'])).toBe('en')
   })
+  it('defaults only unpicked Android installs to Polish, regardless of device and server locale', () => {
+    expect(effectiveLang(auto, { default_lang: 'en' }, ['en-US'], true)).toBe('pl')
+    expect(effectiveLang(auto, null, ['en-US'], true)).toBe('pl')
+    expect(effectiveLang({ lang: 'en', langAuto: false }, { default_lang: 'pl' }, ['pl'], true)).toBe('en')
+  })
   it('falls back to English for a copy with no usable lang', () => {
     expect(effectiveLang(null, null, ['it'])).toBe('en')
     expect(effectiveLang({ lang: '' }, null, [])).toBe('en')
