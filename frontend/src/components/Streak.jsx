@@ -152,6 +152,8 @@ export function StreakBadges ({ info }) {
 
 /** Stats: the streak with its best, the freezes, the badges and how far the next one is. */
 export function StreakCard ({ info, onHelp }) {
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const detailsId = 'streak-details-' + useId().replace(/[^a-zA-Z0-9]/g, '')
   const hint = freezeLine(info)
   const nextLine = info.next ? t('Next badge at {0} weeks.', info.next) : t('Every badge collected. Legend.')
   return <div className="card streak-card" data-streak-card>
@@ -167,23 +169,30 @@ export function StreakCard ({ info, onHelp }) {
         <Freezes n={info.freezes} max={info.max ?? FREEZE_MAX} className="big" />
       </div>
     </div>
-    <StreakBadges info={info} />
-    <LevelBar info={info} />
-    {info.next
-      ? <div className="streak-next">
-        <div className="pbar-t small"><span>{nextLine}</span><span className="pbar-n">{info.current} / {info.next}</span></div>
-        <div className="pbar" role="progressbar" aria-label={nextLine} aria-valuemin={0} aria-valuemax={info.next} aria-valuenow={Math.min(info.current, info.next)}>
-          <i style={{ '--p': Math.min(1, info.current / info.next) }} />
+    <button type="button" className="streak-details-toggle" aria-expanded={detailsOpen} aria-controls={detailsId}
+      onClick={() => setDetailsOpen(open => !open)}>
+      <span>{t(detailsOpen ? 'Show less' : 'Show more')}</span>
+      <Icon name={detailsOpen ? 'chevronUp' : 'chevronDown'} />
+    </button>
+    <div id={detailsId} className="streak-details" hidden={!detailsOpen}>
+      <StreakBadges info={info} />
+      <LevelBar info={info} />
+      {info.next
+        ? <div className="streak-next">
+          <div className="pbar-t small"><span>{nextLine}</span><span className="pbar-n">{info.current} / {info.next}</span></div>
+          <div className="pbar" role="progressbar" aria-label={nextLine} aria-valuemin={0} aria-valuemax={info.next} aria-valuenow={Math.min(info.current, info.next)}>
+            <i style={{ '--p': Math.min(1, info.current / info.next) }} />
+          </div>
         </div>
-      </div>
-      : null}
-    <div className="muted small streak-hint">{info.next ? '' : nextLine + ' '}{hint}</div>
-    <FrozenWeeks frozen={info.frozen} />
-    <ExcusedWeeks excused={info.excused} left={info.excuseLeft} />
-    {/* The calendar with every week's mark and the how-to (components/StreakCalendar.jsx). */}
-    {onHelp && <button type="button" className="streak-how" onClick={onHelp} aria-haspopup="dialog">
-      <Icon name="calendar" /><span>{t('How streaks work')}</span><Icon name="chevronRight" className="chev" />
-    </button>}
+        : null}
+      <div className="muted small streak-hint">{info.next ? '' : nextLine + ' '}{hint}</div>
+      <FrozenWeeks frozen={info.frozen} />
+      <ExcusedWeeks excused={info.excused} left={info.excuseLeft} />
+      {/* The calendar with every week's mark and the how-to (components/StreakCalendar.jsx). */}
+      {onHelp && <button type="button" className="streak-how" onClick={onHelp} aria-haspopup="dialog">
+        <Icon name="calendar" /><span>{t('How streaks work')}</span><Icon name="chevronRight" className="chev" />
+      </button>}
+    </div>
   </div>
 }
 

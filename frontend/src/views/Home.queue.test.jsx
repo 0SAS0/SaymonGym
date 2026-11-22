@@ -56,6 +56,7 @@ const chips = () => [...host.querySelectorAll('.queue .chip')]
 const chipTexts = () => chips().map(c => c.textContent)
 const status = () => host.querySelector('.queue .queue-status')?.textContent
 const todayTitle = () => host.querySelector('.today-row .ttl')?.textContent
+const todayAction = () => host.querySelector('.today-row .today-action')
 const card = () => [...host.querySelectorAll('.card .card-head-sub')].map(e => e.textContent).find(x => x.includes('this week'))
 
 describe('Home — coach week progress row', () => {
@@ -294,13 +295,24 @@ describe('Home — the today row follows today\'s plan, not just the last sessio
   const today = todayISO()
   const at = (id, start, name) => ({ id: 'w-' + id + start, d: today, start, end: start + 1000, routineIds: id ? [id] : [], routineId: id, name: name || routines.find(r => r.id === id).name, entries: [] })
   const tag = () => host.querySelector('.today-row .tag')?.textContent
+  const expectStartAction = () => {
+    const row = host.querySelector('.today-row')
+    expect(row.getAttribute('role')).toBe('button')
+    expect(row.tabIndex).toBe(0)
+    expect(todayAction()?.textContent).toContain('Start workout')
+    // The role=button's accessible name comes from its visible row contents, including the CTA.
+    expect(row.textContent).toContain('Start workout')
+    return row
+  }
 
   it('a queue session done today: the row offers the next one, like the progress row', () => {
     setS({ workouts: [at('d1', Date.now() - 3600000)] })
     mount()
     expect(status()).toBe('Next: US W1 D2, today')
     expect(todayTitle()).toBe('US W1 D2')
-    expect(tag()).toBe('Start')
+    const row = expectStartAction()
+    act(() => row.click())
+    expect(startFlow).toHaveBeenCalledWith(['d2'])
   })
 
   it('a freestyle session on a planned day leaves the plan offered', () => {
@@ -308,7 +320,9 @@ describe('Home — the today row follows today\'s plan, not just the last sessio
     setS({ queue: null, week: { [wd]: ['own'] }, workouts: [at(null, Date.now() - 3600000, 'Freestyle')] })
     mount()
     expect(todayTitle()).toBe('Core')
-    expect(tag()).toBe('Start')
+    const row = expectStartAction()
+    act(() => row.click())
+    expect(startFlow).toHaveBeenCalledWith(['own'])
   })
 
   it('the planned routine done today still reads as done', () => {
@@ -330,7 +344,9 @@ describe('Home — the today row follows today\'s plan, not just the last sessio
     expect(chipTexts()).toEqual(['US W1 D1Up next', 'US W1 D2Later', 'US W1 D3Later'])
     expect(status()).toBe('Next: US W1 D1, today')
     expect(todayTitle()).toBe('US W1 D1')
-    expect(tag()).toBe('Start')
+    const row = expectStartAction()
+    act(() => row.click())
+    expect(startFlow).toHaveBeenCalledWith(['d1'])
   })
 })
 

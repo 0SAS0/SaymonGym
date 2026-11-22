@@ -57,8 +57,9 @@ const press = label => act(() => [...bwCard().querySelectorAll('.seg button')].f
 describe('Stats: body weight reads the weigh-in\'s own date', () => {
   it('places imported weigh-ins on their own days, not on the import moment', () => {
     mount(imported)
-    // nothing is dated inside the 3M default, so the chart is empty until All is picked
-    expect(bwChart().points).toEqual([])
+    // Nothing is dated inside the 3M default, so show the empty state instead of an empty chart.
+    expect(bwChart()).toBeUndefined()
+    expect(bwCard().textContent).toContain('No data yet')
     press('All')
     expect(bwChart().points.map(p => p.t)).toEqual(imported.map(b => noonOf(b.d)))
     expect(bwChart().points.map(p => p.y)).toEqual(imported.map(b => b.w))
@@ -91,9 +92,9 @@ describe('Stats: body weight reads the weigh-in\'s own date', () => {
   it('the ranges cut by date: a 2021-2022 import has no month and no year, and All still shows it all', () => {
     mount(imported)
     press('1M')
-    expect(bwChart().points).toEqual([])
+    expect(bwChart()).toBeUndefined()
     press('1Y')
-    expect(bwChart().points).toEqual([])
+    expect(bwChart()).toBeUndefined()
     press('All')
     expect(bwChart().points).toHaveLength(5)
   })

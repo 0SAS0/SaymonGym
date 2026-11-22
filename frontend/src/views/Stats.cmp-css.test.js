@@ -36,3 +36,22 @@ describe('Stats rows and the fatigue bar on a narrow phone', () => {
   })
 })
 
+describe('Stats polish keeps details readable and navigation clear', () => {
+  const css = strip('src/index.css')
+  it('folds streak detail and clamps exercise names to two lines with full text retained', () => {
+    expect(rule(css, '.streak-details-toggle')).toMatch(/min-height:44px/)
+    expect(rule(css, '.streak-details\[hidden\]')).toMatch(/display:none/)
+    expect(css).toMatch(/\.ex-pick \.lrow-stack-value \.lrow-v\{[^}]*-webkit-line-clamp:2/)
+    expect(css).toMatch(/\.slevel-ex\{[^}]*-webkit-line-clamp:2/)
+    expect(css).toMatch(/\.sbar-l1>span\.sbar-ex-name\{[^}]*-webkit-line-clamp:2/)
+    expect(css).toMatch(/\.sbar-row\.exercise-time-row \.sbar-n\{[^}]*-webkit-line-clamp:2[^}]*overflow:hidden/)
+  })
+  it('keeps Stats sections below the system top inset and page content above the bottom navigation', () => {
+    expect(rule(css, '.stats-index')).toMatch(/top:calc\(var\(--sat\) \+ var\(--conn\)\)/)
+    expect(rule(css, ':root:has\(\.stats-index\)')).toMatch(/scroll-padding-top:calc\(var\(--sat\) \+ var\(--conn\) \+ 62px\)/)
+    expect(rule(css, '#app')).toMatch(/padding:calc\(var\(--sat\) \+ var\(--conn\) \+ 8px\) var\(--pad\) calc\(88px \+ var\(--sab\)\)/)
+    expect(rule(css, '#tabbar')).toMatch(/bottom:0/)
+    expect(rule(css, '#tabbar')).toMatch(/var\(--sab\)/)
+  })
+})
+

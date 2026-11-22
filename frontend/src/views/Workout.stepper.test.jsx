@@ -1,4 +1,5 @@
 import React, { act } from 'react'
+import { readFileSync } from 'node:fs'
 import { createRoot } from 'react-dom/client'
 import { parseHTML } from 'linkedom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -148,6 +149,45 @@ afterEach(async () => {
 })
 
 describe('superset stepper — one tap moves one step', () => {
+  it('keeps the completion control at 48px for the supported phone widths', () => {
+    const css = readFileSync(new URL('../saymongym.css', import.meta.url), 'utf8')
+    const compactRule = css.match(/@media \(max-width: 430px\)\s*\{\s*body\.no-tabbar \.setrow \.set-check \{([^}]+)\}/s)?.[1] || ''
+    const baseRule = css.match(/body\.no-tabbar \.setrow \{([^}]+)\}/)?.[1] || ''
+    const currentRule = css.match(/body\.no-tabbar \.setrow\.is-current \{([^}]+)\}/)?.[1] || ''
+    const wrapRule = css.match(/@media \(max-width: 412px\)\s*\{\s*body\.no-tabbar \.setrow \{([^}]+)\}/s)?.[1] || ''
+    expect(compactRule).toContain('flex-basis: 48px')
+    expect(compactRule).toContain('width: 48px')
+    expect(baseRule).toContain('box-sizing: border-box')
+    expect(baseRule).toContain('padding-inline-end: 12px')
+    expect(baseRule).toContain('border: 1px solid transparent')
+    expect(currentRule).toContain('border-color: var(--acc-line)')
+    expect(currentRule).not.toContain('margin')
+    expect(currentRule).not.toContain('outline')
+    expect(wrapRule).toContain('flex-wrap: wrap')
+    expect([360, 375, 393, 412, 430].map(width => width <= 412)).toEqual([true, true, true, true, false])
+  })
+
+  it('highlights the next unfinished set and lets its clear completion button be undone', async () => {
+    await mount([exercise('press', [true, false, false])])
+    const rows = container.querySelectorAll('.setrow')
+    expect(rows[0].classList.contains('is-current')).toBe(false)
+    expect(rows[1].classList.contains('is-current')).toBe(true)
+    expect(rows[2].classList.contains('is-current')).toBe(false)
+
+    const complete = rows[1].querySelector('.set-check')
+    expect(complete.textContent).toContain('Log set')
+    expect(complete.getAttribute('aria-label')).toContain('Log set')
+    await tap(complete)
+    expect(mocks.S.active.entries[0].sets[1].done).toBe(true)
+    await act(async () => { root.render(React.createElement(Workout)) })
+
+    const undo = container.querySelectorAll('.setrow')[1].querySelector('.set-check')
+    expect(undo.textContent).toContain('Done')
+    expect(undo.getAttribute('aria-label')).toContain('Undo')
+    await tap(undo)
+    expect(mocks.S.active.entries[0].sets[1].done).toBe(false)
+  })
+
   // Weight steps by 2.5. A single tap on the first exercise of a superset must land on 62.5,
   // not stay at 60 waiting for a second tap.
   it('increments a superset member weight by one step per tap', async () => {

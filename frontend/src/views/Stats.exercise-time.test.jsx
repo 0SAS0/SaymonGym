@@ -56,4 +56,14 @@ describe('Stats — time per exercise', () => {
     act(() => [...host.querySelectorAll('button')].find(b => b.textContent === 'All').click())
     expect(rows()[0]).toContain('12 min')
   })
+
+  it('keeps the full long exercise name in the accessible row label and clamps its visual label', () => {
+    const name = 'Ściąganie Drążka Na Wyciągu W Pełnym Zakresie Ruchu'
+    const longNameState = { unit: 'kg', workouts: [session(2, start => [{ id: name, sets: [tick(start, 2)] }])] }
+    act(() => root.render(<ExerciseTimeCard S={longNameState} />))
+    const row = host.querySelector('.exercise-time-row')
+    expect(row).toBeTruthy()
+    expect(row.getAttribute('aria-label')).toBe(name + ', 2 min')
+    expect(row.querySelector('.sbar-n').textContent).toBe(name)
+  })
 })

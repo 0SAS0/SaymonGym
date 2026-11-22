@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRoot } from 'react-dom/client'
 import { useStore } from '../store/useStore.js'
 import { startFlow } from '../sheets.jsx'
-import { startPickerSheet } from '../components/StartSheets.jsx'
+import { startPickerSheet, startOrPreview } from '../components/StartSheets.jsx'
 import Home from './Home.jsx'
 
 const nav = vi.fn()
@@ -26,7 +26,7 @@ const routines = [{ id: 'r1', name: 'Push', emoji: null, ex: [{ id: '0025' }] }]
 let host, root
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
-  nav.mockClear(); startFlow.mockClear()
+  nav.mockClear(); startFlow.mockClear(); startPickerSheet.mockClear(); startOrPreview.mockClear()
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
@@ -49,6 +49,17 @@ describe('Home — the way to the Start screen when a plan already owns today', 
   it('offers the door on a planned day, where the Start button would start the plan', () => {
     setS(); mount()
     expect(door()).toBeTruthy()
+  })
+
+  it('starts the planned routine from the accessible today action', () => {
+    setS(); mount()
+    const row = host.querySelector('.today-row')
+    expect(row.getAttribute('role')).toBe('button')
+    expect(row.tabIndex).toBe(0)
+    expect(row.textContent).toContain('Start workout')
+    expect(row.querySelector('.today-action').textContent).toContain('Start workout')
+    act(() => row.click())
+    expect(startOrPreview).toHaveBeenCalledWith(['r1'])
   })
 
   it('opens the start picker (#930) without starting anything', () => {
@@ -74,8 +85,11 @@ describe('Home — the way to the Start screen when a plan already owns today', 
     mount()
     const row = host.querySelector('.today-row')
     expect(row.querySelector('.ttl').textContent).toBe('Push')
-    expect(row.querySelector('.tag').textContent).toBe('Edit')
-    act(() => { row.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(row.getAttribute('role')).toBe('button')
+    expect(row.tabIndex).toBe(0)
+    expect(row.querySelector('.today-action').textContent).toContain('Edit')
+    expect(row.textContent).toContain('Edit')
+    act(() => row.click())
     expect(nav).toHaveBeenCalledWith('/workout')
   })
 
@@ -84,6 +98,11 @@ describe('Home — the way to the Start screen when a plan already owns today', 
     mount()
     const row = host.querySelector('.today-row')
     expect(row.querySelector('.ttl').textContent).toBe('Push (in progress)')
-    expect(row.querySelector('.tag').textContent).toBe('Resume')
+    expect(row.getAttribute('role')).toBe('button')
+    expect(row.tabIndex).toBe(0)
+    expect(row.querySelector('.today-action').textContent).toContain('Continue workout')
+    expect(row.textContent).toContain('Continue workout')
+    act(() => row.click())
+    expect(nav).toHaveBeenCalledWith('/workout')
   })
 })

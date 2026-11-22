@@ -376,7 +376,7 @@ function MusclesCard({ S, planFocus = false }) {
         {muscleExercises.length ? <div className="sbar-list">{muscleExercises.map(row => (
           <BarRow key={row.id} className="sbar-2l" fill={Math.round(row.decay * 100) / 100}
             label={<>
-              <span className="sbar-l1"><span className={EXIDX[row.id] ? exerciseNameClass(EXIDX[row.id]) : undefined}>{row.name}</span>
+              <span className="sbar-l1"><span className={'sbar-ex-name' + (EXIDX[row.id] ? ' ' + exerciseNameClass(EXIDX[row.id]) : '')} title={row.name}>{row.name}</span>
                 <span className="sbar-tag">{row.primary === sel ? t('primary') : t('secondary')}</span></span>
               <span className="sbar-l2">{t('Est. 1RM')}: {fmtNum(row.est)} {S.unit} · {fmtDate(row.estDate, true)}</span>
             </>}
@@ -504,10 +504,13 @@ export function ExerciseTimeCard({ S }) {
   return <div className="card" data-exercise-time>
     <h2>{t('Time per exercise')} <span className="dim">· {t('Average time a session, counted from when its sets were ticked.')}</span></h2>
     <Segmented className="seg-range" of={t('Time per exercise')} value={win} onChange={v => { setWin(v); setAll(false) }} options={rangeOptions()} />
-    {rows.length ? <div className="sbar-list">{shown.map(r => <BarRow key={r.id} fill={max ? r.avg / max : 0}
-      label={nameOf(r.id)} labelClass={exerciseNameClass(EXIDX[r.id])}
-      value={fmtDur(Math.max(r.avg, 60000))}
-      onClick={() => exerciseHistorySheet(r.id)} />)}</div> : <div className="muted small">{t('No timed sets in this period.')}</div>}
+    {rows.length ? <div className="sbar-list">{shown.map(r => {
+      const name = nameOf(r.id)
+      const time = fmtDur(Math.max(r.avg, 60000))
+      return <BarRow key={r.id} className="exercise-time-row" fill={max ? r.avg / max : 0} title={name} ariaLabel={name + ', ' + time}
+      label={name} labelClass={exerciseNameClass(EXIDX[r.id])}
+      value={time}
+      onClick={() => exerciseHistorySheet(r.id)} />})}</div> : <div className="muted small">{t('No timed sets in this period.')}</div>}
     {rows.length > TIME_ROWS && <Button className="sbar-more" trailingIcon={all ? 'chevronUp' : 'chevronDown'} aria-expanded={all} aria-label={nameIn(t('Time per exercise'), t(all ? 'Show less' : 'Show more'))}
       onClick={() => setAll(v => !v)}>{t(all ? 'Show less' : 'Show more')}</Button>}
   </div>
@@ -613,7 +616,16 @@ export default function Stats() {
   const bw30 = S.bodyweight.filter(b => weighInAt(b) > now - 30 * 86400000)
   const bwDelta30 = bw30.length > 1 ? bw30[bw30.length - 1].w - bw30[0].w : null
   const workouts = S.workouts
+  const recent = [...workouts].reverse().slice(0, RECENT_ROWS)
   const monthW = workouts.filter(w => workoutDay(w)?.slice(0, 7) === todayISO().slice(0, 7)).length
+  const currentWeek = weekKey(todayISO(), weekStartOf(S))
+  const weekW = workouts.filter(w => {
+    const day = workoutDay(w)
+    return day && weekKey(day, weekStartOf(S)) === currentWeek
+  }).length
+  // Finished workouts already carry the records awarded by the existing finish summary. Count
+  // those saved marks for the overview; do not recalculate or persist a second record model here.
+  const recordCount = workouts.reduce((n, w) => n + (w.prs?.length || 0) + (w.e1prs?.length || 0), 0)
   const lifetime = lifetimeVolume(S)
   const totals = useMemo(() => lifetimeTotals(S), [S.workouts]) // eslint-disable-line react-hooks/exhaustive-deps
   const likeness = likenessOf(S.unit === 'lb' ? lifetime * LB_KG : lifetime)
@@ -879,7 +891,6 @@ export default function Stats() {
     { value: 'lifts', label: t('Lifts') },
     ...(hasEffortSect ? [{ value: 'effort', label: t('Effort') }] : []),
   ]
-  const recent = [...workouts].reverse().slice(0, RECENT_ROWS)
   const wrapped = motivationOn ? wrappedYears(S).slice(0, 4) : []
   // Your month (v1.4.5): last month's story once it is over, this month's so far before that.
   const storyMonth = motivationOn ? offeredMonth(S, todayISO()) : null
@@ -922,13 +933,13 @@ export default function Stats() {
     <StatsIndex sections={sections} />
 
     <section className="stats-sect" id="stats-overview" data-stats-sect="overview" aria-label={t('Overview')}>
-    {/* The headline numbers as one divided card: three across, the lifetime total under them at
-        full width (a few hundred sessions make a long number). The week streak is not a tile any
-        more: it is the card right below, once. */}
-    <div className={'kpis' + (bodyOn ? '' : ' two')} data-tour="stats-tiles">
-      <div className="tile"><div className="l">{t('Workouts')}</div><div className="v">{workouts.length}</div></div>
+    {/* The numbers used most often lead: this week, this month and saved record marks. The
+        lifetime workout count remains in the volume subline below; the streak stays its own card. */}
+    <div className={'kpis stats-summary' + (bodyOn ? '' : ' two')} data-tour="stats-tiles">
+      <div className="tile"><div className="l">{t('This week')}</div><div className="v">{weekW}</div></div>
       <div className="tile"><div className="l">{t('This month')}</div><div className="v">{monthW}</div></div>
       {bodyOn && <div className="tile"><div className="l">{t('Weight 30d')}</div><div className="v" style={{ color: bwDelta30 === null ? 'inherit' : bwDeltaColor(bwDelta30, (lastBW(S) || {}).w || 0) }}>{bwDelta30 === null ? '–' : (bwDelta30 > 0 ? '+' : '') + fmtNum(bwDelta30) + ' ' + S.unit}</div></div>}
+      {recordCount > 0 && <div className="tile" data-record-count><div className="l">{t('Records')}</div><div className="v">{fmtNum(recordCount)}</div></div>}
       {/* Everything ever lifted (Discord): imports included, warm-ups only when the profile
           counts them (#719). */}
       {/* With the rest of the all-time sums under it (Discord, 10-22), and a size to picture. */}
@@ -937,6 +948,11 @@ export default function Stats() {
         {likeness && <div className="small lifetime-like">{likeness}</div>}
       </div>}
     </div>
+
+    {recent[0] && <div className="sect-b stats-last-workout">
+      <Row icon="history" title={t('Last workout')} subtitle={recent[0].name || t('Workout')} value={fmtDate(recent[0].d, true)} accessory="chevron"
+        onClick={() => workoutDetailSheet(recent[0])} />
+    </div>}
 
     {workouts.length > 0 && motivationOn && <StreakCard info={streak} onHelp={() => calendarSheet(undefined, { help: true })} />}
     {/* The month's challenges and the trophy shelf (lib/challenges.js), folded to one line. */}
@@ -979,7 +995,8 @@ export default function Stats() {
       </div>
       <Segmented className="seg-range" of={t('Body weight')} value={range} onChange={setRange}
         options={rangeOptions()} />
-      <div className="chart"><LineChart points={bwPts} h={160} unit={S.unit} goal={S.targetW} /></div>
+      {bwPts.length ? <div className="chart"><LineChart points={bwPts} h={160} unit={S.unit} goal={S.targetW} /></div>
+        : <div className="empty small">{t('No data yet')}</div>}
       {/* the weekly rate and, with one set, how it sits in its corridor (#759) */}
       {S.bodyweight.length > 0 && <WeightRate S={S} />}
       {/* every weigh-in, week by week with its average (Discord 'Weight') */}
@@ -998,7 +1015,7 @@ export default function Stats() {
       <h2>{t('Exercise progress')}</h2>
       {exHist.length ? <>
         {/* What to chart, as one grouped list: the exercise, then the chart of it. */}
-        <div className="sect-b ex-pick">
+        <div className="sect-b ex-pick" title={curEx ? nameOf(curEx) : undefined}>
           <SelectRow title={t('Exercise')} sheetTitle={t('Exercise progress')} value={curEx} onChange={setExId} stackedValue
             options={exHist.map(id => ({ value: id, label: (EXIDX[id] ? exerciseNameText(EXIDX[id]) : nameOf(id)) + (exCurrent[id].mx ? ' · ' + fmtNum(exCurrent[id].shown ?? exCurrent[id].mx) + ' ' + exCurrent[id].unit : '') }))}
             search={{

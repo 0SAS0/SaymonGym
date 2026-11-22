@@ -18,6 +18,7 @@ function renderTopSheet() {
   const root = createRoot(host)
   mounted.push(root)
   act(() => root.render(sheet.render(() => useUI.getState().closeSheet(sheet.id))))
+  return host
 }
 const settle = () => act(async () => {})
 
@@ -65,5 +66,46 @@ describe('finish summary: Share', () => {
     expect([...host.querySelectorAll('.sharew-tpl button')].map(b => b.textContent)).toEqual(['Classic', 'Photo', 'Lifts', 'Sticker'])
     const labels = [...host.querySelectorAll('.share-opts button')].map(b => b.textContent)
     expect(labels).toEqual(['Story 9:16', 'Portrait 4:5', 'Square 1:1', 'Dark', 'Light', 'Accent'])
+  })
+
+  it('names the workout, keeps the three summary values and map, and says nothing about absent PRs', async () => {
+    // A previous, higher result means this session has no record under the existing rules.
+    useStore.getState().S.workouts = [{ id: 'prior', d: '2026-09-01', start: Date.now() - 86400000, end: Date.now() - 86000000,
+      entries: [{ id: '0025', sets: [{ w: 70, r: 5, done: true }] }] }]
+    act(() => finishWorkoutNow())
+    renderTopSheet()
+    await settle()
+    const summary = host.querySelector('[data-finish-summary]')
+    expect(summary.querySelector('.finish-workout-name').textContent).toBe('Push A')
+    expect(summary.querySelectorAll('[data-finish-stats] .tile')).toHaveLength(4)
+    expect(summary.querySelector('.finish-muscles .finish-map')).toBeTruthy()
+    expect(summary.querySelector('[data-finish-records]')).toBeNull()
+    expect(summary.querySelector('.finish-stats .tile.narrow .v').textContent).toBe('–')
+    expect(summary.querySelectorAll('.fin-actions button')[0].textContent).toBe('Nice!')
+  })
+
+  it('shows established records from the existing finish calculation', async () => {
+    const st = useStore.getState().S
+    st.workouts = [{ id: 'prior', d: '2026-09-01', start: Date.now() - 86400000, end: Date.now() - 86000000,
+      entries: [{ id: '0025', sets: [{ w: 50, r: 5, done: true }] }] }]
+    act(() => finishWorkoutNow())
+    const prHost = renderTopSheet()
+    await settle()
+    expect(useStore.getState().S.workouts.at(-1).prs).toContain('0025')
+    const records = prHost.querySelector('[data-finish-records]')
+    expect(records).toBeTruthy()
+    expect(records?.textContent).toContain('New PR:')
+  })
+
+  it('renders zero completed sets and zero volume without inventing a record', async () => {
+    const st = useStore.getState().S
+    st.active.entries[0].sets = []
+    act(() => finishWorkoutNow())
+    renderTopSheet()
+    await settle()
+    const summary = host.querySelector('[data-finish-summary]')
+    expect(summary.querySelector('.finish-stats .tile.wide .v').textContent).toContain('0')
+    expect(summary.querySelector('.finish-stats .tile:nth-child(2) .v').textContent).toContain('0')
+    expect(summary.querySelector('[data-finish-records]')).toBeNull()
   })
 })
