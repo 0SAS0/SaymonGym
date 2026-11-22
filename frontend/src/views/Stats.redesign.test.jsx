@@ -71,9 +71,10 @@ describe('Stats redesign: Overview', () => {
     mount(Object.assign(clone(DEF), buildDemoState()))
     const overview = card('#stats-overview')
     const kpis = overview.querySelector('[data-tour="stats-tiles"]')
-    expect([...kpis.querySelectorAll('.tile .l')].map(l => l.textContent)).toEqual(['Workouts', 'This month', 'Weight 30d', 'Lifted in total'])
+    expect([...kpis.querySelectorAll('.tile .l')].map(l => l.textContent)).toEqual(['This week', 'This month', 'Weight 30d', 'Records', 'Lifted in total'])
     expect(host.textContent.match(/Week streak/g)).toHaveLength(1)
     expect(host.querySelectorAll('[data-streak-card]')).toHaveLength(1)
+    expect(overview.querySelector('.stats-last-workout .lrow-t').textContent).toBe('Last workout')
     const fold = overview.querySelector('[data-challenge-shelf] .card-fold')
     if (fold) expect(fold.getAttribute('aria-expanded')).toBe('false')
     expect(overview.querySelectorAll('[data-workout-row]')).toHaveLength(3)
@@ -86,6 +87,38 @@ describe('Stats redesign: Overview', () => {
     mount(Object.assign(clone(DEF), { workouts: [] }))
     const titles = [...host.querySelectorAll('[data-stats-links] .lrow-t')].map(t => t.textContent)
     expect(titles).toContain('Progress photos')
+    expect(card('#stats-overview [data-record-count]')).toBeNull()
+    expect(card('#stats-overview [data-lifetime-volume]')).toBeNull()
+    expect(card('#stats-overview .stats-last-workout')).toBeNull()
+    expect(mocks.charts).toHaveLength(0)
+  })
+
+  it('counts the current week and month from saved workout dates and sums saved record marks', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 30, 12))
+    mount(small({ workouts: [
+      { ...done('2026-09-28', 'chest', 3), prs: ['press'], e1prs: [{ id: 'row' }] },
+      done('2026-09-30', 'chest', 2),
+      done('2026-09-20', 'chest', 4),
+    ] }))
+    const kpis = card('#stats-overview [data-tour="stats-tiles"]')
+    const tileValue = label => [...kpis.querySelectorAll('.tile')].find(tile => tile.querySelector('.l')?.textContent === label)?.querySelector('.v')?.textContent
+    expect(tileValue('This week')).toBe('2')
+    expect(tileValue('This month')).toBe('3')
+    expect(tileValue('Records')).toBe('2')
+  })
+
+  it('keeps a saved zero-set workout in the existing date and recent-workout counts', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 30, 12))
+    const emptyWorkout = { id: 'empty', d: '2026-09-30', name: 'Empty session', vol: 0, entries: [{ id: 'press', sets: [] }] }
+    mount(small({ workouts: [emptyWorkout] }))
+    const kpis = card('#stats-overview [data-tour="stats-tiles"]')
+    const tileValue = label => [...kpis.querySelectorAll('.tile')].find(tile => tile.querySelector('.l')?.textContent === label)?.querySelector('.v')?.textContent
+    expect(tileValue('This week')).toBe('1')
+    expect(tileValue('This month')).toBe('1')
+    expect(card('#stats-overview .stats-last-workout .lrow-s').textContent).toBe('Empty session')
+    expect(card('#stats-overview [data-lifetime-volume]')).toBeNull()
   })
 
   it('puts the pages behind Stats in one grouped list of rows under Body', () => {

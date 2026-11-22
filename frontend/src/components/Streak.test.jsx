@@ -52,6 +52,11 @@ describe('freezes and medals', () => {
 describe('Stats card', () => {
   it('shows tiered medals for the badges reached, locks the rest, and the bar to the next', () => {
     const el = render(<StreakCard info={info()} />)
+    const toggle = el.querySelector('.streak-details-toggle')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(el.querySelector('.streak-details').hidden).toBe(true)
+    act(() => toggle.click())
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
     const badges = el.querySelectorAll('.streak-badge')
     expect(badges).toHaveLength(5)
     expect(badges[0].querySelector('.medal-bronze')).toBeTruthy()
@@ -70,6 +75,7 @@ describe('Stats card', () => {
 
   it('has no bar once every badge is collected', () => {
     const el = render(<StreakCard info={info({ current: 110, best: 110, badges: [4, 12, 26, 52, 104], next: null, freezes: 2, toNextFreeze: 0 })} />)
+    act(() => el.querySelector('.streak-details-toggle').click())
     expect(el.querySelector('[role="progressbar"]')).toBeNull()
     expect(el.querySelectorAll('.streak-badge .medal-legend')).toHaveLength(1)
     expect(el.textContent).toContain('Every badge collected. Legend.')
@@ -96,6 +102,7 @@ describe('a streak that ran through a gap', () => {
 
   it('the Stats card names the week the freeze covered', () => {
     const el = render(<StreakCard info={streakInfo(S, '2026-11-03')} />)
+    act(() => el.querySelector('.streak-details-toggle').click())
     const line = el.querySelector('[data-streak-frozen]')
     expect(line).toBeTruthy()
     expect(line.lastElementChild.textContent).toMatch(/^A freeze covered the week of .*21.*, so the streak kept going\.$/)

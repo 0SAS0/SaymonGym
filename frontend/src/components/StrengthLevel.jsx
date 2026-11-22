@@ -70,7 +70,7 @@ export function StrengthLevelsCard({ S }) {
     </div>
     {shown.map(lv => <div key={lv.lift} className="slevel-row" role="group"
       aria-label={(EXIDX[lv.id] ? exerciseNameText(EXIDX[lv.id]) : lv.id) + ': ' + t(LEVEL_NAME[lv.name]) + ', ' + t('{0} × body weight', fmtRatio(lv.ratio))}>
-      <span className="slevel-ex">{EXIDX[lv.id] ? exerciseNameText(EXIDX[lv.id]) : lv.id}</span>
+      <span className="slevel-ex" title={EXIDX[lv.id] ? exerciseNameText(EXIDX[lv.id]) : lv.id}>{EXIDX[lv.id] ? exerciseNameText(EXIDX[lv.id]) : lv.id}</span>
       <span className="slevel-meta" aria-hidden="true"><b>{t(LEVEL_NAME[lv.name])}</b> · {fmtRatio(lv.ratio)}×</span>
     </div>)}
     {rows.length > LEVEL_ROWS && <Button className="sbar-more" trailingIcon={all ? 'chevronUp' : 'chevronDown'} aria-expanded={all} aria-label={nameIn(t('Strength levels'), t(all ? 'Show less' : 'Show more'))}

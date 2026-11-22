@@ -2764,6 +2764,13 @@ button.mchip{border:none;font:inherit;font-size:var(--fs-caption);cursor:pointer
 .streak-num{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:2.125rem;font-weight:700;letter-spacing:-.03em;line-height:1.05;font-variant-numeric:tabular-nums}
 .streak-num .flame{font-size:.92em;vertical-align:0}
 .streak-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;text-align:end}
+.streak-card{padding:12px 14px}
+.streak-card .streak-num{margin-top:3px;font-size:1.75rem}
+.streak-card .streak-side{gap:3px}
+.streak-details-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:44px;margin-top:8px;padding:0;border:0;border-top:var(--hair) solid var(--sep);background:none;color:var(--acc-ink);font:inherit;font-size:var(--fs-footnote);text-align:start;cursor:pointer}
+.streak-details-toggle .icn{font-size:var(--fs-caption);color:var(--label-2)}
+.streak-details[hidden]{display:none}
+.streak-details .streak-badges{margin-top:8px}
 
 /* Freezes: a snowflake in a round chip, filled when banked, outlined while still to earn. */
 .streak-meta{display:inline-flex;align-items:center;gap:8px}
@@ -3770,6 +3777,7 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 .sbar-row.tap{min-height:44px;margin-inline:-6px;padding-inline:6px;border-radius:8px;cursor:pointer;transition:background-color var(--fast) var(--ease)}
 .sbar-row.tap:active{background:var(--press-fill)}
 .sbar-n{min-width:0;font-size:var(--fs-subhead);line-height:var(--lh-small);overflow-wrap:break-word}
+.sbar-row.exercise-time-row .sbar-n{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
 .sbar-row.on .sbar-n{font-weight:600}
 .sbar-t{position:relative;height:8px;border-radius:4px;background:var(--surface-2)}
 .sbar-f{position:absolute;inset-block:0;inset-inline-start:0;border-radius:4px;background:var(--label-2)}
@@ -3787,6 +3795,7 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 .sbar-2l .sbar-n{display:flex;flex-direction:column;gap:1px}
 .sbar-l1{display:flex;align-items:baseline;gap:6px;min-width:0}
 .sbar-l1>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbar-l1>span.sbar-ex-name{flex:1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;white-space:normal;overflow:hidden;overflow-wrap:anywhere}
 .sbar-tag{flex:none;font-size:var(--fs-caption2);color:var(--label-dim)}
 .sbar-l2{display:block;font-size:var(--fs-footnote);line-height:var(--lh-small);color:var(--label-2);font-weight:400;white-space:normal}
 .sbar-find{display:flex;justify-content:flex-end;margin-top:6px}
@@ -3863,7 +3872,7 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
    of the line; on a narrow phone or a long name the level wraps under it, never cut. */
 .slevel-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 12px;padding:9px 0}
 .slevel-row+.slevel-row{border-top:var(--hair) solid var(--sep)}
-.slevel-ex{flex:1 1 9em;font-size:var(--fs-subhead);font-weight:500;min-width:0;overflow-wrap:break-word}
+.slevel-ex{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;flex:1 1 9em;font-size:var(--fs-subhead);font-weight:500;min-width:0;overflow-wrap:break-word}
 .slevel-meta{flex:none;margin-inline-start:auto;font-size:var(--fs-footnote);line-height:var(--lh-small);color:var(--label-2);font-variant-numeric:tabular-nums}
 .slevel-meta b{color:var(--label);font-weight:600}
 .slevel-src{margin-top:8px}
@@ -3896,6 +3905,10 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 .kpis .tile.wide{grid-column:1 / -1;border-inline-start:0;border-top:var(--hair) solid var(--sep)}
 .kpis .tile .l{font-size:var(--fs-footnote);line-height:var(--lh-small);color:var(--label-2);overflow-wrap:break-word}
 .kpis .tile .v{font-size:var(--fs-title2);margin-top:2px;overflow-wrap:anywhere}
+.kpis.stats-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+.kpis.stats-summary .tile:nth-child(n+3):not(.wide){border-top:var(--hair) solid var(--sep)}
+.stats-last-workout{margin-bottom:12px}
+@media (min-width:700px){.kpis.stats-summary{grid-template-columns:repeat(4,minmax(0,1fr))}}
 /* A card folded to one line (Challenges on Stats): the whole line is the button, 44px or more. */
 .card-fold{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;margin:-4px 0;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:start;cursor:pointer}
 .card-fold-t{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -3905,7 +3918,7 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 .card-fold-b{margin-top:14px}
 /* Exercise progress: what to chart as one inset group, the caption, a day a row. */
 .card .ex-pick{background:var(--surface-2);margin-bottom:10px}
-.ex-pick .lrow-stack-value .lrow-v{white-space:normal;overflow-wrap:break-word}
+.ex-pick .lrow-stack-value .lrow-v{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;white-space:normal;overflow-wrap:break-word}
 .ex-cap{margin-top:8px;line-height:var(--lh-small)}
 .ex-cap b{font-weight:600}
 .ex-note{margin-top:4px;line-height:var(--lh-small)}
