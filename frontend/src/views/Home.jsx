@@ -207,7 +207,7 @@ export default function Home() {
           : <Icon name="plus" className="chev" />}
       </div>}
       <div className="home-activity" aria-label={t('This week')}>
-        <div className="home-activity-count"><strong>{doneThisWeek}</strong><span>{tn('{0} workout this week', '{0} workouts this week', doneThisWeek)}</span></div>
+        <div className="home-activity-count"><strong>{doneThisWeek}</strong><span>{tn('{0} workout', '{0} workouts', doneThisWeek)} {t('this week')}</span></div>
         {lastWorkout && <div className="home-last-workout"><span>{t('Last workout')}</span><strong>{lastWorkout.name || deriveSessionName((Array.isArray(lastWorkout.routineIds) ? lastWorkout.routineIds : [lastWorkout.routineId]).filter(Boolean).map(id => S.routines.find(r => r.id === id)?.name).filter(Boolean)) || t('Workout')}</strong><time>{fmtDate(lastWorkout.d, true)}</time></div>}
       </div>
       {/* openNutrition's fasting window (lib/sister-nutrition.js), when this device is linked. */}

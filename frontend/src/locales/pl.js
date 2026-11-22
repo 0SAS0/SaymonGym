@@ -1,12 +1,5 @@
 // Polish UI strings. Keys are the English source strings (see lib/i18n.js).
 export default {
-  "{0} workouts this week": {
-    one: "{0} trening w tym tygodniu",
-    few: "{0} treningi w tym tygodniu",
-    many: "{0} treningów w tym tygodniu",
-    other: "{0} treningu w tym tygodniu"
-  },
-  "Workout": "Trening",
   // --- Settings first screen in groups (#1105) ---
   "Watches": "Zegarki",
   "Set once": "Ustaw raz",
