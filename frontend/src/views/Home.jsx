@@ -116,6 +116,7 @@ export default function Home() {
   // in a coach week, the queue's sessions and your own days together (lib/queue.js weekTally).
   const tally = weekTally(S, todayISO())
   const { done: doneThisWeek, planned: plannedPerWeek } = tally
+  const lastWorkout = [...S.workouts].sort((a, b) => (b.d || '').localeCompare(a.d || '') || (b.time || '').localeCompare(a.time || ''))[0] || null
   const left = workoutsLeft(S, todayISO())
   // The streak with its best run and freezes (lib/streak.js), read back from the workouts.
   const todayKey = todayISO()
@@ -143,7 +144,7 @@ export default function Home() {
     </div>
     <TrainerNotice />
 
-    <div className="card">
+    <div className="card home-hero-card">
       {/* A running programme (lib/programmes.js) wrote this week's plan: where it stands, one tap from its screen. */}
       {progChip && <button type="button" className="chip ichip prog-chip" onClick={() => nav('/plan/programmes')}><Icon name="calendar" /><span>{progChip}</span></button>}
       {/* A coach week runs by order, not by weekday, so its progress row stands in for the
@@ -158,7 +159,7 @@ export default function Home() {
           <div className="small muted" style={{ fontWeight: 500 }}>{wkLabel}</div>
           <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 'var(--fs-subhead)' }} onClick={() => setWeekOffset(w => w + 1)} aria-label={t('Next week')}><Icon name="chevronRight" /></button>
         </div>
-        <div className="week">{strip}</div>
+        <div className="week" aria-label={wkLabel}>{strip}</div>
       </>}
       {/* The week's plan as a countdown (#753, lib/week-left.js): "2 of 4 left this week". */}
       {left && <div className={'small dim wkleft' + (left.left > 0 ? '' : ' done')}>
@@ -184,7 +185,7 @@ export default function Home() {
           {x.done ? <span className="tag" style={{ color: 'var(--green)', background: 'color-mix(in srgb,var(--green) 16%,transparent)' }}>{t('Done')}</span>
             : <span className="row" style={{ gap: 8 }}><MiniBodyMap routines={x.routines} body={S.body} /><span className="tag acc">{t('Start')}</span></span>}
         </div>
-      }) : <div className="today-row" data-tour="today" {...tappable(onToday)}>
+      }) : <div className={'today-row today-hero' + (S.active ? ' is-active' : '') + (doneToday ? ' is-done' : '')} data-tour="today" {...tappable(onToday)}>
         <div className="row" style={{ gap: 9, minWidth: 0 }}>
           <span className="lrow-i" style={{ background: S.active ? 'var(--orange)' : doneToday ? 'var(--surface-3)' : routine ? 'var(--acc)' : 'var(--surface-3)',
             // the rest day's moon on the grey square: white on #e3e3e8 vanished in the light theme
@@ -200,11 +201,15 @@ export default function Home() {
             {next && !doneToday && <div className="ss">{t('Next session: {0}, {1}', t(DAYN[next.weekday]), next.routine.name)}</div>}
           </div>
         </div>
-        {S.active ? <span className="tag" style={{ color: 'var(--orange-ink)', background: 'color-mix(in srgb,var(--orange) 16%,transparent)' }}>{editingSaved ? t('Edit') : t('Resume')}</span>
+        {S.active ? <span className="today-action" style={{ color: 'var(--orange-ink)', background: 'color-mix(in srgb,var(--orange) 16%,transparent)' }}>{editingSaved ? t('Edit') : t('Continue workout')}<Icon name="chevronRight" /></span>
           : doneToday ? <span className="tag" style={{ color: 'var(--green)', background: 'color-mix(in srgb,var(--green) 16%,transparent)' }}>{t('Done')}</span>
-          : routine ? <span className="row" style={{ gap: 8 }}><MiniBodyMap routines={todayRoutines} body={S.body} /><span className="tag acc">{t('Start')}</span></span>
+          : routine ? <span className="today-action"><MiniBodyMap routines={todayRoutines} body={S.body} /><span>{t('Start workout')}</span><Icon name="chevronRight" /></span>
           : <Icon name="plus" className="chev" />}
       </div>}
+      <div className="home-activity" aria-label={t('This week')}>
+        <div className="home-activity-count"><strong>{doneThisWeek}</strong><span>{tn('{0} workout this week', '{0} workouts this week', doneThisWeek)}</span></div>
+        {lastWorkout && <div className="home-last-workout"><span>{t('Last workout')}</span><strong>{lastWorkout.name || deriveSessionName((Array.isArray(lastWorkout.routineIds) ? lastWorkout.routineIds : [lastWorkout.routineId]).filter(Boolean).map(id => S.routines.find(r => r.id === id)?.name).filter(Boolean)) || t('Workout')}</strong><time>{fmtDate(lastWorkout.d, true)}</time></div>}
+      </div>
       {/* openNutrition's fasting window (lib/sister-nutrition.js), when this device is linked. */}
       <FastingLine />
       {/* The row above starts today's plan in one tap, and so does the Start button in the tab
