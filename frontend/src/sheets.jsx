@@ -4630,17 +4630,18 @@ function LastAndNext({ st, w }) {
     <h4 className="sec">{t('Last time and next time')}</h4>
     <div className="list">{rows.map(row => {
       const ex = EXIDX[row.id]
+      const exName = ex ? exerciseNameFor(ex) : row.id
       const tr = row.trend == null ? null : TREND[row.trend]
-      return <div key={row.id} className="item" style={{ display: 'block' }}>
-        <div className="row between" style={{ gap: 8 }}>
-          <span className={'tt ' + exerciseNameClass(ex)} style={{ fontWeight: 600 }}>{ex ? exerciseNameFor(ex) : row.id}</span>
+      return <div key={row.id} className="item finish-exercise-row">
+        <div className="row between finish-exercise-head" style={{ gap: 8 }}>
+          <span className={'tt finish-exercise-name ' + exerciseNameClass(ex)} title={exName}>{exName}</span>
           {tr ? <span style={{ color: tr[1], display: 'inline-flex' }} aria-label={row.trend > 0 ? t('Up on last time') : row.trend < 0 ? t('Down on last time') : t('Same as last time')}><Icon name={tr[0]} /></span>
             : <span className="tag nocap">{t('First time')}</span>}
         </div>
-        <div className="small">{t('Today')}: {line(row.id, row.today, row.holds)}</div>
-        {(row.last || row.lastHolds) && <div className="small dim">{t('Last time')}: {line(row.id, row.last, row.lastHolds)}</div>}
-        {row.next && <div className="small accent">{t('Next time')}: {isoRun((row.next.w != null ? fmtNum(shownWeight(st, row.id, row.next.w)) + ' ' + exUnitOf(st, row.id) : '') + (row.next.w != null && row.next.r != null ? ' × ' : '') + (row.next.r != null ? row.next.r : '') + (row.next.bands ? ' × ' + bandText(row.next.bands) : ''))} · {nextWord[row.next.kind]}</div>}
-        {row.nextHold && <div className="small accent">{t('Next time')}: {isoRun((row.nextHold.w != null ? fmtNum(shownWeight(st, row.id, row.nextHold.w)) + ' ' + exUnitOf(st, row.id) + ' × ' : '') + fmtSec(row.nextHold.sec))}{row.nextHold.side ? ' · ' + t('per side') : ''} · {nextWord[row.nextHold.kind]}</div>}
+        <div className="small finish-exercise-detail">{t('Today')}: {line(row.id, row.today, row.holds)}</div>
+        {(row.last || row.lastHolds) && <div className="small dim finish-exercise-detail">{t('Last time')}: {line(row.id, row.last, row.lastHolds)}</div>}
+        {row.next && <div className="small accent finish-exercise-detail">{t('Next time')}: {isoRun((row.next.w != null ? fmtNum(shownWeight(st, row.id, row.next.w)) + ' ' + exUnitOf(st, row.id) : '') + (row.next.w != null && row.next.r != null ? ' × ' : '') + (row.next.r != null ? row.next.r : '') + (row.next.bands ? ' × ' + bandText(row.next.bands) : ''))} · {nextWord[row.next.kind]}</div>}
+        {row.nextHold && <div className="small accent finish-exercise-detail">{t('Next time')}: {isoRun((row.nextHold.w != null ? fmtNum(shownWeight(st, row.id, row.nextHold.w)) + ' ' + exUnitOf(st, row.id) + ' × ' : '') + fmtSec(row.nextHold.sec))}{row.nextHold.side ? ' · ' + t('per side') : ''} · {nextWord[row.nextHold.kind]}</div>}
       </div>
     })}</div>
   </div>
@@ -4655,9 +4656,10 @@ function CardioDone({ st, w }) {
     <h4 className="sec">{t('Cardio')}</h4>
     <div className="list">{rows.map((row, i) => {
       const ex = EXIDX[row.id]
-      return <div key={i} className="item" style={{ display: 'block' }}>
-        <span className={'tt ' + exerciseNameClass(ex)} style={{ fontWeight: 600 }}>{ex ? exerciseNameFor(ex) : row.id}</span>
-        <div className="small">{row.sets.map(x => setLabel(row.id, x, row.target, speedUnitOf(st)) + hrLabel(x)).join('  ·  ')}</div>
+      const exName = ex ? exerciseNameFor(ex) : row.id
+      return <div key={i} className="item finish-exercise-row">
+        <span className={'tt finish-exercise-name ' + exerciseNameClass(ex)} title={exName}>{exName}</span>
+        <div className="small finish-exercise-detail">{row.sets.map(x => setLabel(row.id, x, row.target, speedUnitOf(st)) + hrLabel(x)).join('  ·  ')}</div>
       </div>
     })}</div>
   </div>
@@ -4677,7 +4679,7 @@ function KeepInRoutine({ additions }) {
   return <div style={{ textAlign: 'start', marginBottom: 14 }} data-keep-in-routine>
     <h4 className="sec">{t('New in this workout')}</h4>
     {additions.map(a => <div key={a.routineId} style={{ marginBottom: 8 }}>
-      <div className="small dim" style={{ marginBottom: 6 }}>{a.ex.map(cfg => EXIDX[cfg.id] ? exerciseNameText(EXIDX[cfg.id]) : cfg.id).join(', ')}</div>
+      <div className="small dim finish-additions-name" style={{ marginBottom: 6 }} title={a.ex.map(cfg => EXIDX[cfg.id] ? exerciseNameText(EXIDX[cfg.id]) : cfg.id).join(', ')}>{a.ex.map(cfg => EXIDX[cfg.id] ? exerciseNameText(EXIDX[cfg.id]) : cfg.id).join(', ')}</div>
       {added[a.routineId]
         ? <div className="small accent row" style={{ gap: 6 }}><Icon name="checkCircle" /><span>{t('Added to “{0}”', a.name)}</span></div>
         : <Button icon="plusCircle" onClick={() => keep(a)}>{tn('Add it to “{1}”', 'Add them to “{1}”', a.ex.length, a.name)}</Button>}
@@ -4687,21 +4689,22 @@ function KeepInRoutine({ additions }) {
 
 function FinishSummary({ w, prs, e1prs = [], additions = [], close }) {
   const st = useStore(s => s.S)
-  return <div style={{ textAlign: 'center', padding: '8px 0' }}>
+  return <div className="finish-summary" data-finish-summary>
     {/* Sticky, so the summary can be left from the top however far it has been scrolled. */}
     <div className="fin-x"><button type="button" className="iconbtn" aria-label={t('Close')} onClick={() => closeThenNav(close, '/home')}><Icon name="xmark" /></button></div>
     <div style={{ fontSize: '2.75rem', display: 'flex', justifyContent: 'center', color: 'var(--acc-ink)', position: 'relative' }}><Icon name="trophy" /><SeasonDeco spot="finish" workout /></div>
-    <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
+    <h3 className="finish-heading" style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
+    <div className="finish-workout-name" title={w.name || t('Workout')}>{w.name || t('Workout')}</div>
     <AutoEndedNote w={w} />
-    <div className="tiles fin" style={{ textAlign: 'start' }}>
+    <div className="tiles fin finish-stats" data-finish-stats style={{ textAlign: 'start' }}>
       <div className="tile"><div className="l">{t('Duration')}</div><div className="v v-sm">{fmtDur(w.end - w.start)}</div></div>
       <div className="tile"><div className="l">{t('Volume')}</div><div className="v v-sm">{fmtVol(sessionVolume(w, st), st.unit)}</div></div>
       <div className="tile wide"><div className="l">{t('Sets')}</div><div className="v v-sm">{setsWorkCount(setsDone(w), workSetsDone(w))}</div></div>
       <div className="tile narrow"><div className="l">{t('PRs')}</div><div className="v v-sm">{prs.length || '–'}</div></div>
     </div>
-    {(prs.length > 0 || e1prs.length > 0) && <div style={{ textAlign: 'start', marginBottom: 12 }}>
-      {prs.map(id => <div key={id} className="small accent row" style={{ gap: 6, alignItems: 'flex-start' }}><Icon name="trophy" style={{ fontSize: 'var(--fs-footnote)', marginTop: 2, flex: 'none' }} /><span>{t('New PR:')} <span className={exerciseNameClass(EXIDX[id])}>{EXIDX[id] ? exerciseNameFor(EXIDX[id]) : id}</span></span></div>)}
-      {e1prs.map(p => <div key={p.id} className="small accent row" style={{ gap: 6, alignItems: 'flex-start' }}><Icon name="chartLine" style={{ fontSize: 'var(--fs-footnote)', marginTop: 2, flex: 'none' }} /><span>{t('Best estimated 1RM:')} <span className={exerciseNameClass(EXIDX[p.id])}>{EXIDX[p.id] ? exerciseNameFor(EXIDX[p.id]) : p.id}</span> · {fmtNum(p.est)} {st.unit}</span></div>)}
+    {(prs.length > 0 || e1prs.length > 0) && <div className="finish-records" data-finish-records style={{ textAlign: 'start', marginBottom: 12 }}>
+      {prs.map(id => { const name = EXIDX[id] ? exerciseNameFor(EXIDX[id]) : id; return <div key={id} className="small accent row finish-record" style={{ gap: 6, alignItems: 'flex-start' }}><Icon name="trophy" style={{ fontSize: 'var(--fs-footnote)', marginTop: 2, flex: 'none' }} /><span>{t('New PR:')} <span className={'finish-record-name ' + exerciseNameClass(EXIDX[id])} title={name}>{name}</span></span></div> })}
+      {e1prs.map(p => { const name = EXIDX[p.id] ? exerciseNameFor(EXIDX[p.id]) : p.id; return <div key={p.id} className="small accent row finish-record" style={{ gap: 6, alignItems: 'flex-start' }}><Icon name="chartLine" style={{ fontSize: 'var(--fs-footnote)', marginTop: 2, flex: 'none' }} /><span>{t('Best estimated 1RM:')} <span className={'finish-record-name ' + exerciseNameClass(EXIDX[p.id])} title={name}>{name}</span> · {fmtNum(p.est)} {st.unit}</span></div> })}
     </div>}
     <CircuitResults w={w} />
     {/* Done is one tap away right under the numbers: the body map, what's next and the photo
@@ -4713,8 +4716,10 @@ function FinishSummary({ w, prs, e1prs = [], additions = [], close }) {
       {isOn(st, 'motivation') && <Button variant="tinted" icon="share" data-fin-share onClick={() => shareWorkoutSheet(S().workouts.find(x => x.id === w.id) || w)}>{t('Share')}</Button>}
     </div>
     <div style={{ height: 14 }} />
-    <h4 className="sec" style={{ textAlign: 'start' }}>{t('What you just trained')}</h4>
-    <BodyMap load={loadOfWorkouts([w])} body={st.body} />
+    <section className="finish-muscles">
+      <h4 className="sec" style={{ textAlign: 'start' }}>{t('What you just trained')}</h4>
+      <BodyMap className="finish-map" load={loadOfWorkouts([w])} body={st.body} />
+    </section>
     <div style={{ height: 14 }} />
     <LastAndNext st={st} w={w} />
     <CardioDone st={st} w={w} />

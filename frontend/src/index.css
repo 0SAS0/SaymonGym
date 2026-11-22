@@ -2321,8 +2321,23 @@ body.no-tabbar #timer.countin{box-shadow:inset 0 var(--hair) 0 var(--acc),0 -10p
 :root[data-theme="light"] .center{background:#fff}
 /* a dialog with real content in it (the workout summary) takes the width of the phone */
 .center.wide{width:min(94vw,440px);padding:18px}
+.center.wide:has(.finish-summary){top:calc(50% + (var(--sat) - var(--sab))/2);max-height:calc(100dvh - var(--sat) - var(--sab) - 24px)}
+:root[data-native-kb] .center.wide:has(.finish-summary){top:calc((100% - var(--native-kb))/2 + (var(--sat) - var(--sab))/2);max-height:calc(100dvh - var(--native-kb) - var(--sat) - var(--sab) - 24px)}
 .fin-x{position:sticky;top:0;z-index:2;height:0;display:flex;justify-content:flex-end}
 .fin-x .iconbtn{margin:-6px -6px 0 0}
+.finish-summary{width:100%;min-width:0;padding:8px 0 max(16px,var(--sab));text-align:center;overflow-x:clip}
+.finish-summary .fin-x .iconbtn{width:48px;height:48px;margin:-6px 0 0}
+.finish-summary .fin-x .iconbtn::before{inset:-6px 0}
+.finish-summary .finish-heading{line-height:var(--lh-title);text-wrap:balance}
+.finish-workout-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;max-width:100%;margin:0 auto 12px;font-size:var(--fs-callout);font-weight:600;line-height:var(--lh-title)}
+.center .finish-stats.tiles.fin{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.center .finish-stats.tiles.fin .tile,.center .finish-stats.tiles.fin .tile.wide,.center .finish-stats.tiles.fin .tile.narrow{grid-column:auto;min-width:0;padding:12px}
+.finish-stats .tile .l{line-height:var(--lh-small);overflow-wrap:anywhere}
+.finish-stats .tile .v{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.finish-records{display:grid;gap:6px}
+.finish-record{min-width:0;align-items:flex-start}
+.finish-record>span{min-width:0;overflow-wrap:anywhere}
+.finish-record-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;font-weight:600}
 /* a dialog with a field centres in what the Android 15 keyboard leaves */
 :root[data-native-kb] .center{
   top:calc((100% - var(--native-kb)) / 2);
@@ -2551,6 +2566,17 @@ body.no-tabbar #timer.countin{box-shadow:inset 0 var(--hair) 0 var(--acc),0 -10p
 .fin-actions{display:flex;gap:10px}
 .fin-actions .btn{width:auto;flex:none}
 .fin-actions .btn:first-child{flex:1 1 auto;min-width:0}
+.finish-summary .fin-actions{align-items:stretch}
+.finish-summary .fin-actions .btn{min-height:48px;min-width:0}
+.finish-muscles{min-width:0;margin-top:12px}
+.finish-summary .finish-map{width:100%;min-width:0;gap:8px;padding:12px 8px;border-radius:var(--r-card);background:var(--surface-2);overflow:hidden}
+.finish-summary .finish-map .bm-v{width:calc(50% - 4px);max-height:min(38vh,280px)}
+.finish-exercise-row{display:block;min-width:0}
+.finish-exercise-head{min-width:0;align-items:flex-start}
+.finish-exercise-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;min-width:0;flex:1;font-weight:600!important}
+.finish-exercise-head .tag{flex:none;white-space:nowrap}
+.finish-exercise-detail{overflow-wrap:anywhere;margin-top:4px}
+.finish-additions-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;overflow-wrap:anywhere}
 /* --- muscle map --- */
 /* Reuses the .hm-c level ramp above, so one accent scale means one thing app-wide. */
 /* An untrained muscle is derived from the text colour rather than a fixed surface, so
