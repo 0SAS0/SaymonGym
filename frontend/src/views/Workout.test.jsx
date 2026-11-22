@@ -616,7 +616,7 @@ describe('set ticks for screen readers', () => {
   it('names each tick by its set, not just "checkbox"', async () => {
     await mount([exercise('named-ticks', [false, false])])
     const labels = [...container.querySelectorAll('[role="checkbox"]')].map(c => c.getAttribute('aria-label'))
-    expect(labels).toEqual(['Set 1 done', 'Set 2 done'])
+    expect(labels).toEqual(['Set 1 done: Log set', 'Set 2 done: Log set'])
   })
 })
 
@@ -3401,9 +3401,9 @@ describe('set-row column header', () => {
     const names = namesIn(card)
     expect(repeated(names)).toEqual([])
     expect(names).toEqual(expect.arrayContaining([
-      'button|Warm-up 1', 'input|Warm-up 1: Reps', 'checkbox|Warm-up 1: Done',
-      'button|Set 1', 'button|Set 1: Reps: Decrease', 'input|Set 1: Reps', 'button|Set 1: Reps: Increase', 'checkbox|Set 1 done',
-      'button|Set 2: RIR', 'button|Set 3: RIR', 'checkbox|Set 3 done',
+      'button|Warm-up 1', 'input|Warm-up 1: Reps', 'checkbox|Warm-up 1: Done: Log set',
+      'button|Set 1', 'button|Set 1: Reps: Decrease', 'input|Set 1: Reps', 'button|Set 1: Reps: Increase', 'checkbox|Set 1 done: Log set',
+      'button|Set 2: RIR', 'button|Set 3: RIR', 'checkbox|Set 3 done: Log set',
     ]))
     expect(names.some(n => /^button\|Set 1: Weight \(kg\): Increase$/.test(n))).toBe(true)
     // What is on screen did not change: the empty effort cell still reads "RIR".

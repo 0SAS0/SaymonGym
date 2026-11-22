@@ -48,7 +48,7 @@ import Elapsed from '../components/Elapsed.jsx'
 import LiveHeartRate from '../components/LiveHeartRate.jsx'
 import LiveCard from '../components/LiveCard.jsx'
 import Icon from '../components/Icon.jsx'
-import { Button, Check, NumberField } from '../components/ui.jsx'
+import { Button, NumberField } from '../components/ui.jsx'
 import { defaultIncrement, weightIncrement, stepWeight } from '../lib/progression.js'
 import { progressionGuidance } from '../lib/progression-copy.js'
 import { rpeAs } from '../lib/programmes.js'
@@ -188,7 +188,7 @@ function LadderNext ({ entry, next }) {
   </div>
 }
 
-function ExerciseBlock({ entryIdx, compact, listed, dense, editing, onToggle, onToggleSide, onField, onAddSet, onRemoveSet, onAddWarmup, onKeepWarmups, onAskCoach, onRemoveSetAt, onCopySetAt, onStartTimed, onPairPrev, onPairNext, onSetRowRef, onProgressionSettings, onRest, onNoProg, routineUpdate, onSwap, onSwapBackup, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onRemoveExercise, busy }) {
+function ExerciseBlock({ entryIdx, compact, listed, dense, editing, highlightCurrent = false, onToggle, onToggleSide, onField, onAddSet, onRemoveSet, onAddWarmup, onKeepWarmups, onAskCoach, onRemoveSetAt, onCopySetAt, onStartTimed, onPairPrev, onPairNext, onSetRowRef, onProgressionSettings, onRest, onNoProg, routineUpdate, onSwap, onSwapBackup, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onRemoveExercise, busy }) {
   // The block reads the state as its exercise sees it (lib/ex-unit.js): in the exercise's own
   // weight unit when it has one (#657), so its rows, steppers, plates, owned weights, "last time"
   // and records all speak that unit. Every change goes through inEntryUnit or the parent's
@@ -670,6 +670,11 @@ function ExerciseBlock({ entryIdx, compact, listed, dense, editing, onToggle, on
     const tag = side ? (side === 'L' ? t('Left') : t('Right')) : sideTagOf(s)
     return inEx(tag ? t('Set {0} ({1}) done', setNumOf(s, i), tag) : t('Set {0} done', setNumOf(s, i)))
   }
+  const currentSetIndex = highlightCurrent ? entry.sets.findIndex(x => !x.done) : -1
+  const setCheck = (checked, label, onChange) => <button type="button" role="checkbox" aria-checked={!!checked} aria-label={nameIn(label, t(checked ? 'Undo' : 'Log set'))}
+    className={'chk set-check' + (checked ? ' on' : '')} onClick={() => onChange(!checked)}>
+    <Icon name={checked ? 'check' : 'plus'} /><span>{t(checked ? 'Done' : 'Log set')}</span>
+  </button>
   // What a set rests without a rest of its own, as the flow works it out (restSecFor,
   // warmupRestSecFor), so the set menu can name it.
   const setRestDefault = i => {
@@ -846,12 +851,12 @@ function ExerciseBlock({ entryIdx, compact, listed, dense, editing, onToggle, on
   // row but bound to that side, and the side's own done tick.
   const sideRow = (s, i, side, col1, col2, col3) => {
     const sd = (s.sides && s.sides[side]) || { w: 0, r: 0, done: false }
-    return <div className={'setrow side' + (sd.done ? ' done' : '') + (col3 ? ' eff3' : '')}>
+    return <div className={'setrow side' + (sd.done ? ' done' : '') + (i === currentSetIndex && !sd.done ? ' is-current' : '') + (col3 ? ' eff3' : '')}>
       <span className="sidetag" aria-hidden="true">{side === 'L' ? t('L') : t('R')}</span>
       {sideCell(s, sd, i, side, col1, 'w')}
       {col2 && sideCell(s, sd, i, side, col2, 'r')}
       {col3 && sideEffortCell(s, sd, i, side, col3)}
-      <Check checked={sd.done} label={doneSay(s, i, side)} onChange={() => onToggleSide(i, side)} />
+      {setCheck(sd.done, doneSay(s, i, side), () => onToggleSide(i, side))}
     </div>
   }
   // A side's own drop-set/rest-pause sub-rows (issue #60): the intensifier is logged per limb, so
@@ -898,7 +903,7 @@ function ExerciseBlock({ entryIdx, compact, listed, dense, editing, onToggle, on
   const tagMark = s => { const tag = setTagOf(s); return tag ? <span className="settag" style={{ '--tag': tag.color }} aria-hidden="true">{tag.shape}</span> : null }
   const failSay = (s, label) => { const tag = setTagOf(s); const l = isFailureSet(s) ? label + ', ' + t('Taken to failure') : label; return tag ? l + ', ' + setTagName(tag.id) : l }
   const plainRow = (s, i) => (
-    <div ref={el => onSetRowRef?.(i, el)} data-tour="set" className={'setrow' + (s.done ? ' done' : '') + (col3 ? ' eff3' : '') + (timed ? ' timed' : '')}>
+    <div ref={el => onSetRowRef?.(i, el)} data-tour="set" className={'setrow' + (s.done ? ' done' : '') + (i === currentSetIndex && !s.done ? ' is-current' : '') + (col3 ? ' eff3' : '') + (timed ? ' timed' : '')}>
       <button type="button" className="n" aria-label={inEx(trendSay(i, failSay(s, setSay(s, i))))} aria-describedby={optsId} title={t('More')} onClick={() => openSetMenu(s, i)}>{setNumOf(s, i)}{failMark(s)}{tagMark(s)}{trendMark(i)}</button>
       {/* Both words sit in the pill's one grid cell (::before/::after, hidden), so Left and
           Right are as wide as the longer of the two in every language and the inputs
@@ -911,7 +916,7 @@ function ExerciseBlock({ entryIdx, compact, listed, dense, editing, onToggle, on
           set off itself. The checkbox stays for anyone who timed it on their own watch. */}
       {timed && !editing && <button className="setgo" aria-label={inSet(s, i, t('Start set'))} disabled={s.done || !!working}
         onClick={() => onStartTimed(i)}><Icon name="play" /></button>}
-      <Check checked={s.done} tour="tick" label={doneSay(s, i)} onChange={() => onToggle(i)} />
+      {setCheck(s.done, doneSay(s, i), () => onToggle(i))}
     </div>
   )
   // Swipe on sets (v1.3.11, Settings → Workout): a set row swiped toward the start of the line is
@@ -1773,6 +1778,7 @@ function ActiveWorkout() {
   }
   const blockProps = idx => ({
     editing,
+    highlightCurrent: idx === cur,
     onSwap: () => swapExercise(idx),
     onSwapBackup: id => {
       if (focusMode) focusPointerEpoch.current++
@@ -2838,13 +2844,13 @@ function ActiveWorkout() {
               </div>
               {adjacent.map((idx, k) => <div key={idx} className="ss-ex" data-exidx={idx}>
                 {k > 0 && <div className="ss-amp">+</div>}
-                <ExerciseBlock entryIdx={idx} compact {...blockProps(idx)} />
+                <ExerciseBlock entryIdx={idx} compact {...blockProps(idx)} highlightCurrent={idx === adjacent[0]} />
               </div>)}
             </div>
           ) : <ExerciseBlock entryIdx={adjacent[0]}
             onPairPrev={adjacent[0] > 0 ? () => pairAt(adjacent[0] - 1, adjacent[0]) : null}
             onPairNext={adjacent[0] < A.entries.length - 1 ? () => pairAt(adjacent[0], adjacent[0] + 1) : null}
-            {...blockProps(adjacent[0])} />
+            {...blockProps(adjacent[0])} highlightCurrent />
         }}>
       {focusMode ? (
         <FocusView entryIdx={cur} unit={unit}
