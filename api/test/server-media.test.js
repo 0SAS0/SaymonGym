@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundPort } from './helpers.mjs';
+import { adminProof, boundPort, softPasskey } from './helpers.mjs';
 import * as M from './media-samples.mjs';
 
 const API = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,6 +32,7 @@ const refState = (...hashes) => ({
 });
 
 async function start(t, env = {}) {
+  const key = softPasskey(ORIGIN);
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-media-'));
   fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 });
   fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({
@@ -40,7 +41,7 @@ async function start(t, env = {}) {
       { id: U2, name: 'Bo', created: new Date().toISOString() },
       { id: ADMIN, name: 'Admin', created: new Date().toISOString(), admin: true }
     ],
-    creds: [], subs: [], invites: []
+    creds: [key.row(ADMIN)], subs: [], invites: []
   }));
   const child = spawn(process.execPath, ['server.js'], {
     cwd: API, stdio: ['ignore', 'pipe', 'pipe'],
@@ -57,6 +58,12 @@ async function start(t, env = {}) {
   h.get = (hash, uid = U1, headers) => fetch(`${h.api}/api/media/${hash}`, { headers: headers || cookie(uid) });
   h.post = (route, body, uid = U1) => fetch(`${h.api}${route}`, { method: 'POST', headers: { ...cookie(uid), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   h.pushState = (state, uid = U1) => fetch(`${h.api}/api/data`, { method: 'PUT', headers: { ...cookie(uid), 'Content-Type': 'application/json' }, body: JSON.stringify({ state }) });
+  h.deleteUser = async id => {
+    const headers = cookie(ADMIN);
+    const body = { id };
+    const proof = await adminProof(h.api, headers, 'delete', body, key);
+    return fetch(h.api + '/api/admin/user/delete', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...proof }) });
+  };
   h.files = uid => { try { return fs.readdirSync(path.join(h.uploads, uid)).filter(n => !n.startsWith('.')).sort(); } catch { return []; } };
   h.tmp = uid => { try { return fs.readdirSync(path.join(h.uploads, uid, '.tmp')); } catch { return []; } };
   h.stackFrames = () => h.log.split('\n').filter(l => /^\s+at /.test(l)).length;
@@ -405,7 +412,7 @@ test('folders are 0700 and files 0600, and an admin deleting the profile removes
   assert.equal(mode(path.join(h.uploads, U1, `${M.sha(a)}.jpg`)), 0o600);
   assert.equal(mode(path.join(h.uploads, U1, '.gc.json')), 0o600);
 
-  const del = await fetch(`${h.api}/api/admin/user/delete`, { method: 'POST', headers: { ...cookie(ADMIN), 'Content-Type': 'application/json' }, body: JSON.stringify({ id: U1 }) });
+  const del = await h.deleteUser(U1);
   assert.equal(del.status, 200);
   assert.equal(fs.existsSync(path.join(h.uploads, U1)), false);
   assert.equal(fs.existsSync(path.join(h.uploads, U2)), true, 'nobody else is touched');

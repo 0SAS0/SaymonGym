@@ -26,6 +26,14 @@ COPY frontend/ ./
 ARG APP_BUILD=""
 RUN APP_BUILD="$APP_BUILD" npm run build
 
+# Private deployments can keep the catalogue media. Public deployments can omit it from
+# the final image; the separate Android build still stages its own offline assets.
+FROM build AS exercise-media
+ARG INCLUDE_EXERCISE_MEDIA=1
+COPY catalogue/media/ /exercise-media-source/
+RUN mkdir /exercise-media && \
+    if [ "$INCLUDE_EXERCISE_MEDIA" = 1 ]; then cp -a /exercise-media-source/. /exercise-media/; fi
+
 FROM nginxinc/nginx-unprivileged:1-alpine
 # Same reason as in api/Dockerfile: alpine fixes land faster than the nginx image is rebuilt.
 # The base's last instruction is USER 101, and apk then exits 99 — it cannot open its log as
@@ -83,10 +91,12 @@ USER 101
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 # The exercise stills and animations, 180 px, licensed from Gym visual for openGym only: see
 # catalogue/media/NOTICE.md. They ship inside the image; nothing is downloaded at start-up.
-COPY catalogue/media/ /usr/share/nginx/html/exercise-media/
+COPY --from=exercise-media /exercise-media/ /usr/share/nginx/html/exercise-media/
 
 # Set Default ENVs for nginx
 ENV NGINX_PORT=80
+# Loopback is the safe default; a deployment behind Caddy sets the exact private peer.
+ENV PROXY_REAL_IP_FROM=127.0.0.1
 ENV BACKEND=api
 ENV PORT=3000
 # The DNS nginx asks about BACKEND on every /api request. Docker's embedded resolver by
@@ -94,11 +104,6 @@ ENV PORT=3000
 # resolver makes every /api request hang rather than fail, so any other runtime has to say
 # what its DNS is: on Kubernetes, the kube-dns/CoreDNS service address (commonly 10.96.0.10).
 ENV RESOLVER=127.0.0.11
-# Empty = the CF-Connecting-IP header is dropped before it reaches the API, so it cannot be
-# forged by a direct client. Set to $http_cf_connecting_ip only when Cloudflare is really in
-# front. Defined here too, not just in compose, so the template always renders for anyone
-# running the prebuilt image from their own compose file.
-ENV CF_CONNECTING_IP=""
 # Subpath deployments behind a reverse proxy that does NOT strip its prefix: "/gym", no trailing
 # slash. Empty (the default) serves the app at the root exactly as before. A proxy that strips
 # the prefix needs nothing here — the app derives the API address from its own URL.

@@ -53,9 +53,9 @@ describe('deleteAccount', () => {
     expect(Object.keys(JSON.parse(localStorage.getItem('gym_stash')))).toEqual([ORIGIN() + '|user-2'])
   })
 
-  it('refused by the server: throws, and this device is left exactly as it was', async () => {
-    api.mockRejectedValue(httpError(409, { error: 'the last admin cannot leave while other profiles remain', code: 'last-admin' }))
-    await expect(useStore.getState().deleteAccount('One')).rejects.toMatchObject({ status: 409, data: { code: 'last-admin' } })
+  it.each([[409, 'last-admin'], [403, 'passkey-required']])('refused with %s: leaves the session and local data intact', async (status, code) => {
+    api.mockRejectedValue(httpError(status, { code }))
+    await expect(useStore.getState().deleteAccount('One')).rejects.toMatchObject({ status, data: { code } })
 
     const st = useStore.getState()
     expect(st.user).toEqual(USER)

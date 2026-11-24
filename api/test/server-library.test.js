@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundPort } from './helpers.mjs';
+import { adminProof, boundPort, softPasskey } from './helpers.mjs';
 import * as M from './media-samples.mjs';
 import { currentConsent } from '../consent.js';
 
@@ -46,9 +46,10 @@ const exifJpeg = () => Buffer.concat([
 const ref = (bytes, mime, kind, extra = {}) => ({ kind, hash: M.sha(bytes), mime, size: bytes.length, width: 256, height: 256, ...extra });
 
 async function start(t, env = {}) {
+  const key = softPasskey();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-library-'));
   fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 });
-  fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({ users: USERS.map(u => ({ ...u, created: new Date().toISOString() })), creds: [], subs: [], invites: [] }));
+  fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({ users: USERS.map(u => ({ ...u, created: new Date().toISOString() })), creds: [key.row('u_admin')], subs: [], invites: [] }));
   const child = spawn(process.execPath, ['server.js'], {
     cwd: API, stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN, RP_ID: 'localhost', MEDIA_MIN_FREE_MB: '1', LIBRARY: 'on', ...env }
@@ -60,8 +61,12 @@ async function start(t, env = {}) {
   const port = await boundPort(child, () => h.log);
   h.api = `http://127.0.0.1:${port}`;
   h.call = async (who, method, p, body, headers = {}) => {
+    const session = who ? { Cookie: 'gymsid=' + mint(who) } : {};
+    if (p === '/api/admin/user/delete' && who === 'u_admin') {
+      body = { ...body, ...await adminProof(h.api, session, 'delete', body, key) };
+    }
     const r = await fetch(h.api + p, {
-      method, headers: { 'Content-Type': 'application/json', ...(who ? { Cookie: `gymsid=${mint(who)}` } : {}), ...headers },
+      method, headers: { 'Content-Type': 'application/json', ...session, ...headers },
       ...(body ? { body: JSON.stringify(body) } : {})
     });
     return { status: r.status, body: await r.json().catch(() => null), headers: r.headers };

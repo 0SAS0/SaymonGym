@@ -10,12 +10,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundPort } from './helpers.mjs';
+import { adminProof, boundPort, softPasskey } from './helpers.mjs';
 
 const API = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SECRET = crypto.randomBytes(32).toString('hex');
-function mintSession(uid, sv = 0) {
-  const payload = `${uid}:${Date.now() + 86400000}:${sv}:c`;
+function mintSession(uid, sv = 0, kind = 'c') {
+  const payload = `${uid}:${Date.now() + 86400000}:${sv}:${kind}`;
   return payload + '.' + crypto.createHmac('sha256', SECRET).update(payload).digest('base64url');
 }
 const USERS = [
@@ -32,9 +32,10 @@ const STATE = uid => ({
 });
 
 async function startServer(t, env = {}) {
+  const key = softPasskey();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-tokens-'));
   fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 });
-  fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({ users: USERS, creds: [], subs: [], invites: [] }));
+  fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({ users: USERS, creds: [key.row('u_t_1')], subs: [], invites: [] }));
   for (const u of USERS) fs.writeFileSync(path.join(dataDir, `state-${u.id}.json`), JSON.stringify(STATE(u.id)));
   const child = spawn(process.execPath, ['server.js'], {
     cwd: API, stdio: ['ignore', 'pipe', 'pipe'],
@@ -46,6 +47,7 @@ async function startServer(t, env = {}) {
   t.after(() => { child.kill('SIGKILL'); fs.rmSync(dataDir, { recursive: true, force: true }); });
   h.api = `http://127.0.0.1:${await boundPort(child, () => h.log)}`;
   h.call = async (method, p, { headers = {}, body } = {}) => {
+    if (p === '/api/admin/user/delete') body = { ...body, ...await adminProof(h.api, headers, 'delete', body, key) };
     const r = await fetch(h.api + p, { method, headers: body ? { ...headers, 'Content-Type': 'application/json' } : headers, body: body && JSON.stringify(body) });
     return { status: r.status, body: await r.json().catch(() => null), headers: r.headers };
   };
@@ -169,13 +171,18 @@ test('revoke, sign out everywhere, a disabled and a deleted account all end a to
   assert.equal((await h.call('POST', '/api/logout/all', { headers: page('u_t_1') })).status, 200);
   assert.equal(await ok(b.token), 401);
   assert.equal((await h.call('GET', '/api/tokens', { headers: page('u_t_1', 1) })).body.tokens.length, 0);
-  // Disabled by an admin: refused; enabled again: back.
+  // Re-enabling an account does not resurrect any pre-block credentials.
   const c = await mk('u_t_2');
+  const oldCookie = page('u_t_2');
+  const oldPhone = bearer(mintSession('u_t_2', 0, 'b'));
   assert.equal(await ok(c.token), 200);
   assert.equal((await h.call('POST', '/api/admin/user/disable', { headers: page('u_t_1', 1), body: { id: 'u_t_2', disabled: true } })).status, 200);
   assert.equal(await ok(c.token), 401);
   assert.equal((await h.call('POST', '/api/admin/user/disable', { headers: page('u_t_1', 1), body: { id: 'u_t_2', disabled: false } })).status, 200);
-  assert.equal(await ok(c.token), 200);
+  assert.equal(await ok(c.token), 401);
+  assert.equal((await h.call('GET', '/api/me', { headers: oldCookie })).status, 401);
+  assert.equal((await h.call('GET', '/api/me', { headers: oldPhone })).status, 401);
+  assert.equal((await h.call('GET', '/api/data', { headers: bearer(mintSession('u_t_2', 1, 'b')) })).body.state.workouts[0].name, 'u_t_2');
   // Deleted: gone with the account.
   assert.equal((await h.call('POST', '/api/admin/user/delete', { headers: page('u_t_1', 1), body: { id: 'u_t_2' } })).status, 200);
   assert.equal(await ok(c.token), 401);

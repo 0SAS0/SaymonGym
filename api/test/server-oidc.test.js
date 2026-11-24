@@ -29,7 +29,7 @@ async function setup(t, { env = {}, users = [], creds = [], mock: mockOpts = {} 
   const child = spawn(process.execPath, ['server.js'], {
     cwd: API, stdio: ['ignore', 'pipe', 'pipe'],
     env: {
-      ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN, RP_ID: 'localhost', AUDIT_LOG: '1', TRUST_PROXY: '1',
+      ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN, RP_ID: 'localhost', AUDIT_LOG: '1', TRUST_PROXY: '1', TRUST_PROXY_PEERS: '127.0.0.1',
       INVITE_ONLY: '', ADMIN_UIDS: '', FIRST_USER_ADMIN: '', PASSWORD_LOGIN: '',
       OIDC_ISSUER: mock.issuer, OIDC_CLIENT_ID: mock.clientId, OIDC_CLIENT_SECRET: mock.clientSecret,
       OIDC_LABEL: 'VoidAuth', ...env

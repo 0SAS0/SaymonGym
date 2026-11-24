@@ -24,8 +24,8 @@ const ORIGIN = 'http://localhost:8080';
 const b64u = b => Buffer.from(b).toString('base64url');
 const sha = b => crypto.createHash('sha256').update(b).digest();
 
-const mintSession = (uid, sv = 0) => {
-  const payload = `${uid}:${Date.now() + 86400000}:${sv}`;
+const mintSession = (uid, sv = 0, extraMs = 0) => {
+  const payload = `${uid}:${Date.now() + 86400000 + extraMs}:${sv}`;
   return 'gymsid=' + payload + '.' + crypto.createHmac('sha256', SECRET).update(payload).digest('base64url');
 };
 
@@ -46,7 +46,7 @@ async function startServer(t, { env = {}, users = [], creds = [], deviceLinks } 
     cwd: API, stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN, RP_ID: 'localhost',
-      PASSWORD_LOGIN: '1', TRUST_PROXY: '1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env
+      PASSWORD_LOGIN: '1', TRUST_PROXY: '1', TRUST_PROXY_PEERS: '127.0.0.1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env
     }
   });
   const h = { api: '', log: '', dataDir };
@@ -741,19 +741,32 @@ test('deleting the account: a passkey of its own proves it, someone else’s doe
   const a = softPasskey(), b = softPasskey();
   const h = await startServer(t, { users: [user('u1', 'Ana'), user('u2', 'Bea')], creds: [a.row('u1'), b.row('u2')] });
   const ip = '198.51.100.90';
-  const del = (proof, uid = 'u1') => h.req('POST', '/api/account/delete', { body: { name: uid === 'u1' ? 'Ana' : 'Bea', ...proof }, cookie: mintSession(uid), ip });
+  const cookie = mintSession('u1');
+  const del = (proof, uid = 'u1', session = cookie) => h.req('POST', '/api/account/delete', { body: { name: uid === 'u1' ? 'Ana' : 'Bea', ...proof }, cookie: session, ip });
+  const deletionProof = async (key, verified = true) => {
+    const r = await h.req('POST', '/api/account/delete/options', { body: {}, cookie, ip });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.options.userVerification, 'required');
+    assert.deepEqual(r.body.options.allowCredentials.map(cred => cred.id), [a.id]);
+    return { cid: r.body.cid, credential: key.assertion(r.body.options.challenge, { verified }) };
+  };
 
-  const theirs = await del(await h.stepUp(b, ip));
+  assert.equal((await del(await h.stepUp(a, ip))).status, 403, 'login proof cannot authorize a delete');
+  const theirs = await del(await deletionProof(b));
   assert.equal(theirs.status, 403);
   assert.equal(theirs.body.code, 'passkey');
+  assert.equal((await del(await deletionProof(a, false))).status, 403, 'user presence is not user verification');
+  const bound = await deletionProof(a);
+  assert.equal((await del(bound, 'u1', mintSession('u1', 0, 1000))).status, 403, 'another session cannot use the proof');
+  assert.equal((await del(bound)).status, 403, 'a submitted challenge cannot be reused');
   assert.equal(h.db().users.length, 2, 'nothing was removed');
 
-  const proof = await h.stepUp(a, ip);
+  const proof = await deletionProof(a);
   const ok = await del(proof);
   assert.equal(ok.status, 200);
   assert.deepEqual(h.db().users.map(u => u.id), ['u2']);
   assert.deepEqual(h.db().creds.map(c => c.userId), ['u2'], 'its passkeys go with it');
   assert.equal(h.audit().find(r => r.ev === 'auth.account.delete')?.msg, 'passkey');
   // Bea's session, with Ana's spent assertion: no proof for anyone.
-  assert.equal((await del(proof, 'u2')).status, 403);
+  assert.equal((await del(proof, 'u2', mintSession('u2'))).status, 403);
 });

@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import https from 'node:https';
+import { isIPv4 } from 'node:net';
 import { pipeline } from 'node:stream/promises';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
@@ -132,6 +133,7 @@ const DEFAULT_LANG = (() => {
 // sign-in throttle asks (limitAddress below); the bundled compose file sets it, because the API
 // is reachable there only through the web container, which overwrites those headers.
 const TRUST_PROXY = /^(1|true|yes|on)$/i.test(process.env.TRUST_PROXY || '');
+const TRUST_PROXY_PEERS = new Set((process.env.TRUST_PROXY_PEERS || '').split(',').map(s => canonicalIp(s.trim())).filter(Boolean));
 // 90 days keeps someone who trains a few times a week permanently signed in without a stolen
 // cookie staying good for a year. Overridable because a family instance and one on the open
 // internet don't want the same number. Only affects cookies minted from now on — the expiry is
@@ -154,7 +156,7 @@ fs.mkdirSync(DATA, { recursive: true });
  * reason to refuse to boot. The privilege drop in adapters/spawn.js is the control that does
  * fail closed. */
 const lock = f => { try { fs.chmodSync(path.join(DATA, f), 0o600); } catch { /* not present yet, or host says no */ } };
-['secret', 'db.json', 'coach.json'].forEach(lock);
+['secret', 'db.json', 'db.json.bak', 'coach.json', 'audit.log'].forEach(lock);
 
 /* ---------- secret + db ---------- */
 const secretFile = path.join(DATA, 'secret');
@@ -242,6 +244,11 @@ function atomicWrite(file, content, mode) { durableWrite(file, content, mode); }
 // synced more writes ago than this merges on its next pull instead of taking the server's copy.
 const WID_KEEP = 50;
 const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/g, '') + '.json');
+if (process.platform === 'linux') {
+  for (const entry of fs.readdirSync(DATA, { withFileTypes: true })) {
+    if (entry.isFile() && /^state-[A-Za-z0-9_-]+\.json$/.test(entry.name)) fs.chmodSync(path.join(DATA, entry.name), 0o600);
+  }
+}
 // The watch relay's mailbox of a profile (watch-relay.js): the page's last snapshot and what its
 // Zepp OS watches sent. Small, rewritten whole like the state file.
 const watchFile = uid => path.join(DATA, 'watch-' + uid.replace(/[^a-zA-Z0-9_-]/g, '') + '.json');
@@ -517,7 +524,7 @@ function writeStateAs(uid, fn, { skipIf = null } = {}) {
   next._wids = [...(Array.isArray(cur._wids) ? cur._wids : []), ...(cur._wid ? [cur._wid] : [])].filter(x => typeof x === 'string').slice(-WID_KEEP);
   next._wid = crypto.randomBytes(8).toString('hex');
   delete next.active;
-  atomicWrite(stateFile(uid), JSON.stringify(next));
+  atomicWrite(stateFile(uid), JSON.stringify(next), 0o600);
   stateCache.delete(uid);
   if (MEDIA_ON) { try { MEDIA.noteState(uid, next); } catch (e) { console.error('media noteState', e); } }
   try { integrations.onStateWrite(uid, cur, next); } catch (e) { console.error('integrations onStateWrite', e); }
@@ -563,7 +570,7 @@ function commitState(uid, cur, state, { overRead = false, stamped = false } = {}
   let text;
   try { text = JSON.stringify(state); }
   catch (e) { if (e instanceof RangeError) return { status: 400, body: { error: 'invalid state' } }; throw e; }
-  atomicWrite(stateFile(uid), text);
+  atomicWrite(stateFile(uid), text, 0o600);
   // The stat cache cannot see this write on its own: mtime granularity is 4 ms here (ext4 on
   // this kernel — 3901 of 3999 back-to-back same-size writes shared one timestamp), and a
   // `_rev` going from 7 to 8 does not change the file's size, so two writes inside one 4 ms
@@ -763,14 +770,14 @@ function cookieToken(req) {
 }
 // The session behind a request: { user, exp, bearer } — `bearer` when it came in an Authorization
 // header (a paired phone) rather than the cookie — or null for no valid session at all.
-function sessionOf(req) {
+function sessionOf(req, bind = false) {
   // The paired mobile app has no cookie jar shared with the API's origin, so it carries the same
   // signed token in an Authorization header instead — same payload, same verification below.
   const auth = req.headers.authorization || '';
   const cookie = cookieToken(req);
   const tok = cookie || (auth.startsWith('Bearer ') ? auth.slice(7).trim() : null);
   const s = sessionUser(tok);
-  return s && { ...s, bearer: !cookie };
+  return s && { ...s, bearer: !cookie, ...(bind ? { binding: crypto.createHash('sha256').update(tok).digest('base64url') } : {}) };
 }
 // The session a token (a cookie value or a bearer) stands for — { user, exp } — or null. Split
 // out of sessionOf so the origin check can ask whether a bearer authenticates on its own.
@@ -918,7 +925,7 @@ function csrfOk(req, key) {
 // passkey on the owner's profile and a session for it, without using the code up, as often as
 // wanted, and past "sign out everywhere".
 const challenges = new Map(); // cid -> {kind, challenge, name?, uid?, exp}
-// POST /api/login/options is anonymous and unthrottled, and every call leaves a challenge here
+// POST /api/login/options is anonymous, and every accepted call leaves a challenge here
 // for five minutes, so the Map has a ceiling: past it the oldest goes. A ceremony takes seconds,
 // so only a flood far beyond any real sign-in traffic reaches back far enough to cost one.
 const MAX_CHALLENGES = 20000;
@@ -1083,23 +1090,11 @@ const auditFile = path.join(DATA, 'audit.log');
 let auditSeq = 0;      // never reset, not even by a clear — a wiped log leaves a visible id gap
 let auditCount = 0;
 
-// Which header holds the caller depends on what is in front of the API. CF-Connecting-IP comes
-// first because a Cloudflare tunnel does NOT forward the client in X-Forwarded-For — that header
-// then only carries the tunnel's own container, which looks like a valid answer and isn't. After
-// that, the first entry of X-Forwarded-For is the client and everything behind it is our own hops.
-// All three are only as trustworthy as the proxy in front: it has to overwrite them rather than
-// pass a client-supplied one through. In 'net' mode only the network survives — enough to tell
-// one source from another, not enough to point at a person.
+// Both audit and limits resolve the caller through the same trusted peer policy.
 function clientIp(req) {
   if (AUDIT_IP === 'off') return null;
-  const raw = String(req.headers['cf-connecting-ip'] || '').trim()
-    || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-    || String(req.headers['x-real-ip'] || '').trim()
-    // Nothing in front at all: the socket peer is the client, and it cannot be forged. Behind
-    // the bundled web container a header always wins before this is reached.
-    || String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '').trim();
-  const ip = raw.replace(/^\[|\]$/g, '').slice(0, 45);
-  if (!/^[0-9a-fA-F:.]{3,45}$/.test(ip)) return null;    // never store a header verbatim
+  const ip = requestIp(req);
+  if (!ip) return null;
   if (AUDIT_IP === 'full') return ip;
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return ip.replace(/\.\d{1,3}$/, '.0/24');
   const g = ip.split(':').filter(Boolean).slice(0, 3).join(':');
@@ -1116,6 +1111,12 @@ function auditLines() {
   }
   return rows;
 }
+function redactInviteEvent(row) {
+  if (row.ev === 'admin.invite.create' || row.ev === 'admin.invite.revoke') delete row.msg;
+  if (row.ev === 'auth.register.ok' && typeof row.msg === 'string' && row.msg && !['password', 'invite', 'invite · password', 'oidc'].includes(row.msg)) {
+    row.msg = row.msg.endsWith(' · password') ? 'invite · password' : 'invite';
+  }
+}
 // Retention is a cap, not an archive: age first, then the newest AUDIT_MAX of what's left.
 function auditKeep(rows) {
   let out = rows;
@@ -1128,8 +1129,14 @@ function compactAudit() {
   for (const r of rows) if (+r.id > auditSeq) auditSeq = +r.id;
   const keep = auditKeep(rows);
   auditCount = keep.length;
-  if (keep.length === rows.length) return;
-  try { atomicWrite(auditFile, keep.map(r => JSON.stringify(r)).join('\n') + (keep.length ? '\n' : '')); }
+  let redacted = false;
+  for (const row of keep) {
+    const original = row.msg;
+    redactInviteEvent(row);
+    if (row.msg !== original) redacted = true;
+  }
+  if (keep.length === rows.length && !redacted) return;
+  try { atomicWrite(auditFile, keep.map(r => JSON.stringify(r)).join('\n') + (keep.length ? '\n' : ''), 0o600); }
   catch (e) { console.error('audit compact failed', e.message); }
 }
 
@@ -1148,28 +1155,18 @@ function audit(req, ev, f = {}) {
   if (f.act) rec.act = String(f.act).slice(0, 40);
   const ip = clientIp(req);
   if (ip) rec.ip = ip;
-  try { fs.appendFileSync(auditFile, JSON.stringify(rec) + '\n'); }
+  redactInviteEvent(rec);
+  try { fs.appendFileSync(auditFile, JSON.stringify(rec) + '\n', { mode: 0o600 }); }
   catch (e) { return console.error('audit write failed', e.message); }
   // Amortized: a 5000-event cap rewrites the file once per ~1250 events.
   if (AUDIT_MAX && ++auditCount > AUDIT_MAX * 1.25) compactAudit();
 }
-if (AUDIT_ON) {
-  compactAudit();                                // prune on boot, seed auditSeq/auditCount
-  setInterval(compactAudit, 3600000).unref();    // honour AUDIT_DAYS on an idle instance too
-}
+if (AUDIT_ON || fs.existsSync(auditFile)) compactAudit(); // also scrub old codes if logging is now off
+if (AUDIT_ON) setInterval(compactAudit, 3600000).unref();
 
 /* ---------- sign-in throttle ---------- */
-// The password routes are counted (rate-limit.js) — only on an instance with PASSWORD_LOGIN on,
-// since none of them exists otherwise — and so are the two that redeem a device link (#95).
-// Passkey sign-in, passkey registration and phone pairing stay out of it, as they always were:
-// nothing there is worth guessing (an assertion is a signature, an invite code 64 random bits, a
-// pairing code 40 bits that live five minutes, one per profile), and behind a proxy that hands the
-// API one address for every visitor a per-address count on them would let one stranger pause
-// everybody's way in. Their failures are still written to the audit log, but only a few per
-// address a minute (auditFail below), so a flood of junk cannot push everything else out of it. A
-// device-link code is 60 bits that live ten minutes, no more worth guessing than a pairing code,
-// but it is counted the way a reset code is: every wrong one is a guess at a way into somebody's
-// profile, and the pause it can start only ever stops link redemption, never a sign-in.
+// Password and device-link routes keep the failure backoff and burst budget below.
+// Public auth routes also have per-family IP and global request budgets.
 // Three counts:
 //
 //   AUTH_BURST   every request to a counted route, 60 a minute per address. Enough for a
@@ -1227,27 +1224,47 @@ const THROTTLED = {
   'POST /api/account/delete': null
 };
 
-// Which address the throttle counts against. Unlike clientIp() above, which only labels a log
-// line, this decides who is refused, so a header is believed only when TRUST_PROXY says the API
-// sits behind a proxy that sets it. X-Forwarded-For is read from the right: the last entry is
-// the one the trusted proxy added, anything before it is whatever the client claimed. An IPv6
-// client is counted by its /64, which is what one household or one VPS is handed — counting the
-// full address would give an attacker 2^64 fresh starts.
-function limitAddress(req) {
-  const sock = String(req.socket?.remoteAddress || '');
-  let raw = sock;
-  if (TRUST_PROXY) {
-    const xff = String(req.headers['x-forwarded-for'] || '').split(',').map(v => v.trim()).filter(Boolean);
-    raw = String(req.headers['cf-connecting-ip'] || '').trim() || xff[xff.length - 1]
-      || String(req.headers['x-real-ip'] || '').trim() || sock;
-  }
-  raw = raw.replace(/^\[|\]$/g, '');
-  const g = ipv6Groups(raw.toLowerCase());
+// Check the shared budget before allocating per-address state. Requests already refused by
+// the per-address cap do not spend the budget available to other addresses.
+const publicLimits = Object.fromEntries([
+  ['login', 48, 480], ['password', 60, 240], ['register', 32, 240], ['pair', 32, 240], ['recovery', 32, 240]
+].map(([name, perIp, total]) => [name, {
+  all: createWindow({ max: total, maxKeys: 1 }),
+  ip: createWindow({ max: perIp, maxKeys: 2048 })
+}]));
+const PUBLIC_AUTH = new Map([
+  ...Array.from(PASSKEY_ROUTES, key => [key, key.includes('/register/') ? 'register' : 'login']),
+  ['POST /api/login/password', 'password'], ['POST /api/register/password', 'register'],
+  ['POST /api/login/password-reset', 'recovery'], ['POST /api/device-link/options', 'recovery'],
+  ['POST /api/device-link/verify', 'recovery'], ['POST /api/pair/redeem', 'pair'],
+  ['POST /api/watch/redeem', 'pair'], ['GET /api/oidc/start', 'login'],
+  ['GET /api/oidc/callback', 'login'], ['POST /api/oidc/app/redeem', 'login']
+]);
+setInterval(() => { for (const { ip } of Object.values(publicLimits)) ip.sweep(); }, 60000).unref();
+
+function canonicalIp(value) {
+  const raw = value.toLowerCase();
+  const g = ipv6Groups(raw);
   if (g) {
     if (g.slice(0, 5).every(x => x === 0) && g[5] === 0xffff) return `${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}`;
-    return g.slice(0, 4).map(x => x.toString(16)).join(':') + '::/64';
+    return g.map(x => x.toString(16)).join(':');
   }
-  return /^\d{1,3}(\.\d{1,3}){3}$/.test(raw) ? raw : 'unknown';
+  return isIPv4(raw) ? raw : null;
+}
+
+function requestIp(req) {
+  const peer = canonicalIp(String(req.socket?.remoteAddress || ''));
+  // Nginx overwrites this with a single address. Reject lists and ignore other forwarding headers.
+  if (TRUST_PROXY && TRUST_PROXY_PEERS.has(peer)) {
+    return canonicalIp(String(req.headers['x-forwarded-for'] || '').trim()) || peer;
+  }
+  return peer;
+}
+
+// An IPv6 client shares its /64 across addresses within the same network.
+function limitAddress(req) {
+  const ip = requestIp(req);
+  return ip?.includes(':') ? ip.split(':').slice(0, 4).join(':') + '::/64' : ip || 'unknown';
 }
 function tooMany(res, secs) {
   json(res, 429, { error: 'too many attempts, try again later', code: 'locked', retryAfter: secs }, { 'Retry-After': String(secs) });
@@ -1455,14 +1472,17 @@ function setPassword(user, h) {
 // it may be a cookie someone walked off with, and a password would turn it into a way in that
 // outlives "sign out everywhere". Same ceremony as /api/login/verify, and the credential has
 // to belong to this account.
-async function passkeyStepUp(user, body) {
+async function passkeyStepUp(user, body, proof = null) {
   const c = takeChallenge(body.cid);
-  const cred = c?.kind === 'login' && db.creds.find(x => x.id === body.credential?.id && x.userId === user.id);
+  const matches = proof
+    ? c?.kind === proof.kind && c.uid === user.id && c.binding === proof.binding && c.intent === proof.intent
+    : c?.kind === 'login';
+  const cred = matches && db.creds.find(x => x.id === body.credential?.id && x.userId === user.id);
   if (!cred) return false;
   try {
     const v = await verifyAuthenticationResponse({
       response: body.credential, expectedChallenge: c.challenge, expectedOrigin: ORIGIN, expectedRPID: RP_ID,
-      requireUserVerification: false,
+      requireUserVerification: !!proof,
       credential: { id: cred.id, publicKey: b64uToBuf(cred.publicKey), counter: cred.counter, transports: cred.transports }
     });
     if (!v.verified) return false;
@@ -1470,6 +1490,38 @@ async function passkeyStepUp(user, body) {
     cred.lastUsed = new Date().toISOString();
     return true;
   } catch { return false; }
+}
+
+async function issueStepUp(req, res, session, kind, intent) {
+  const wait = AUTH_BURST.take(limitAddress(req));
+  if (wait) return tooMany(res, wait);
+  const uid = session.user.id;
+  const allowCredentials = db.creds.filter(c => c.userId === uid).map(c => ({ id: c.id, transports: c.transports }));
+  if (!allowCredentials.length) return json(res, 403, { error: 'Add a passkey before confirming this action.', code: 'passkey-required' });
+  const options = await generateAuthenticationOptions({ rpID: RP_ID, userVerification: 'required', allowCredentials });
+  const cid = putChallenge({ kind, uid, binding: session.binding, intent, challenge: options.challenge });
+  json(res, 200, { cid, options });
+}
+
+const ADMIN_ACTIONS = new Map([
+  ['recovery', false], ['password-reset', false], ['delete', false], ['role', true], ['owner', true]
+]);
+
+function adminIntent(action, body) {
+  if (!ADMIN_ACTIONS.has(action) || typeof body.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(body.id)) return null;
+  if (action === 'role' && typeof body.admin !== 'boolean') return null;
+  return JSON.stringify([action, body.id, action === 'role' ? body.admin : null]);
+}
+
+async function confirmAdmin(req, res, user, action, body) {
+  const intent = adminIntent(action, body);
+  const s = sessionOf(req, true);
+  if (!intent || s?.user !== user || !body.credential || !await passkeyStepUp(user, body, { kind: 'admin', intent, binding: s.binding })) {
+    json(res, 403, { error: 'Confirm this action with your passkey.', code: 'admin-passkey-required' });
+    return false;
+  }
+  // Verification awaits crypto. The session or the operator's role may have changed meanwhile.
+  return (ADMIN_ACTIONS.get(action) ? requireOwner(req, res) : requireAdmin(req, res)) === user;
 }
 
 // One password check against the account key `k` (loginTarget), counted as a failure for it and for the caller's
@@ -1711,7 +1763,7 @@ const passwordRoutes = {
     claimFirstAdmin(req, user);
     db.users.push(user);
     saveDb();
-    audit(req, 'auth.register.ok', { user, msg: inv ? inv.code + ' · password' : 'password' });
+    audit(req, 'auth.register.ok', { user, msg: inv ? 'invite · password' : 'password' });
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
@@ -1836,6 +1888,7 @@ const passwordRoutes = {
   'POST /api/admin/user/password-reset': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
+    if (!await confirmAdmin(req, res, admin, 'password-reset', body)) return;
     const u = db.users.find(x => x.id === body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     if (isAdmin(u)) return json(res, 400, { error: 'an admin sets their own password in Settings' });
@@ -2689,7 +2742,7 @@ const routes = {
       created: user.created, lastUsed: user.created
     });
     saveDb();
-    audit(req, 'auth.register.ok', { user, msg: invite ? invite.code : null });
+    audit(req, 'auth.register.ok', { user, msg: invite ? 'invite' : null });
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
@@ -2801,8 +2854,14 @@ const routes = {
   // else is left, since nobody could then run the instance from the app; alone on it, they may
   // go. The session ends with the account: its cookie is cleared here, and any other session
   // stops verifying since the user is gone.
+  'POST /api/account/delete/options': async (req, res) => {
+    const s = sessionOf(req, true);
+    if (!s) return json(res, 401, { error: 'not signed in' });
+    if (s.bearer || s.kind === 'b') return json(res, 403, { error: 'Sign in on the web to confirm account deletion.', code: 'passkey-required' });
+    return issueStepUp(req, res, s, 'account-delete');
+  },
   'POST /api/account/delete': async (req, res) => {
-    const s = sessionOf(req);
+    const s = sessionOf(req, true);
     if (!s) return json(res, 401, { error: 'not signed in' });
     const { user } = s;
     const body = await readBody(req);
@@ -2813,12 +2872,20 @@ const routes = {
     const lastAdmin = () => lastAdminLeaving(user);
     const refuseLastAdmin = () => json(res, 409, { error: 'the last admin cannot leave while other profiles remain', code: 'last-admin' });
     if (lastAdmin()) return refuseLastAdmin();
-    // The pairing is the proof only for a token the pairing made: a browser's cookie value
-    // replayed in an Authorization header is a Bearer too, and is told apart by its kind (`c`,
-    // makeSession). Without this a cookie someone walked off with deleted a passkey-only profile
-    // with no proof at all, the one case this route exists to refuse.
-    const paired = s.bearer && s.kind !== 'c';
-    const proof = paired && !passwordWayIn(user) ? 'device' : await proveOwner(req, res, user, body, 'account-delete');
+    // A phone's local device unlock is not proof the server can verify. Preserve the
+    // current-password path, and only accept a fresh, deletion-specific passkey in the browser.
+    const browser = !s.bearer && s.kind !== 'b';
+    let proof;
+    if (body.credential) {
+      if (browser && await passkeyStepUp(user, body, { kind: 'account-delete', binding: s.binding })) proof = 'passkey';
+      else {
+        audit(req, 'auth.proof.fail', { ok: false, user, msg: 'step-up-failed', act: 'account-delete' });
+        return json(res, 403, { error: 'the passkey could not be verified', code: 'passkey' });
+      }
+    } else {
+      if (!browser && !passwordWayIn(user)) return json(res, 403, { error: 'Sign in on the web to confirm account deletion.', code: 'passkey-required' });
+      proof = await proveOwner(req, res, user, browser ? body : { current: body.current }, 'account-delete');
+    }
     if (!proof) return;
     // Everything above awaited: the session may have ended, and another admin may have left.
     if (readSession(req) !== user) return json(res, 401, { error: 'not signed in' });
@@ -3442,9 +3509,21 @@ const routes = {
   // one for whom: any admin for a profile that is not an admin; the owner for an admin; nobody here
   // for the owner, who uses the server's own command (recover.js), since no one else may take over
   // the owner's login. Not for oneself, and not for a disabled profile. See issueRecovery.
+  'POST /api/admin/passkey/options': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const intent = adminIntent(body.action, body);
+    if (!intent) return json(res, 400, { error: 'invalid administrative action' });
+    if (ADMIN_ACTIONS.get(body.action) && !requireOwner(req, res)) return;
+    const s = sessionOf(req, true);
+    if (s?.user !== admin) return json(res, 401, { error: 'not signed in' });
+    return issueStepUp(req, res, s, 'admin', intent);
+  },
+
   'POST /api/admin/user/recovery': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
+    if (!await confirmAdmin(req, res, admin, 'recovery', body)) return;
     const u = db.users.find(x => x.id === body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     if (u.id === admin.id) return json(res, 400, { error: 'you are signed in: add a passkey in Settings instead', code: 'self' });
@@ -3464,7 +3543,15 @@ const routes = {
     u.disabled = !!body.disabled;
     if (u.disabled) presence.delete(u.id);   // drop them off "training now" at once
     // A device link made before the lock would otherwise still be waiting when it is lifted.
-    if (u.disabled) dropDeviceLinks(db, u.id);
+    if (u.disabled) {
+      u.sv = sessionVersion(u) + 1;
+      dropDeviceLinks(db, u.id);
+      for (const [code, pair] of pairings) if (pair.uid === u.id) pairings.delete(code);
+      dropWatchCodes(watchCodes, u.id);
+      dropWatchLinks(db, u.id);
+      oidcApi?.forget(u.id);
+      revokeTokens(db, u.id);
+    }
     saveDb();
     audit(req, u.disabled ? 'admin.user.disable' : 'admin.user.enable', { user: admin, target: u });
     json(res, 200, { ok: true, id: u.id, disabled: u.disabled });
@@ -3479,6 +3566,7 @@ const routes = {
   'POST /api/admin/user/delete': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
+    if (!await confirmAdmin(req, res, admin, 'delete', body)) return;
     const u = db.users.find(x => x.id === body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     if (u.id === admin.id) return json(res, 400, { error: 'you cannot delete your own account' });
@@ -3498,6 +3586,7 @@ const routes = {
   'POST /api/admin/user/role': async (req, res) => {
     const owner = requireOwner(req, res); if (!owner) return;
     const body = await readBody(req);
+    if (!await confirmAdmin(req, res, owner, 'role', body)) return;
     const u = db.users.find(x => x.id === body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     if (u.id === owner.id) return json(res, 400, { error: 'the owner stays an admin' });
@@ -3514,6 +3603,7 @@ const routes = {
   'POST /api/admin/owner': async (req, res) => {
     const owner = requireOwner(req, res); if (!owner) return;
     const body = await readBody(req);
+    if (!await confirmAdmin(req, res, owner, 'owner', body)) return;
     const u = db.users.find(x => x.id === body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     if (u.id === owner.id) return json(res, 400, { error: 'you already are the owner' });
@@ -3538,15 +3628,14 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     let code;
-    // 16 hex chars = 64 bits, up from 8 chars / 32 bits. Passkey signup has no rate limiting by
-    // design (that's the reverse proxy's job) and /api/register/options tells a caller whether a
-    // code is good, so the code itself has to be the thing that isn't worth guessing. Codes already
+    // 16 hex chars = 64 bits. /api/register/options tells a caller whether a code is good, so
+    // use a high-entropy code in addition to throttling. Codes already
     // in db.json keep working — validation is an exact string compare, never a length or format check.
     do { code = crypto.randomBytes(8).toString('hex').toUpperCase(); } while (db.invites.some(i => i.code === code));
     const invite = { code, note: text(body.note).slice(0, 60), createdBy: admin.id, created: new Date().toISOString() };
     db.invites.push(invite);
     saveDb();
-    audit(req, 'admin.invite.create', { user: admin, msg: code });
+    audit(req, 'admin.invite.create', { user: admin });
     json(res, 200, { invite });
   },
 
@@ -3558,7 +3647,7 @@ const routes = {
     if (inv.usedBy) return json(res, 400, { error: 'already used, cannot revoke' });
     db.invites = db.invites.filter(i => i.code !== inv.code);
     saveDb();
-    audit(req, 'admin.invite.revoke', { user: admin, msg: inv.code });
+    audit(req, 'admin.invite.revoke', { user: admin });
     json(res, 200, { ok: true });
   },
 
@@ -3745,12 +3834,17 @@ const server = http.createServer(async (req, res) => {
     console.warn(originHint(key, req.headers.origin, ORIGIN, req.headers['sec-fetch-site']));
     return json(res, 403, { error: 'cross-origin request refused', code: 'origin-mismatch', expected: ORIGIN });
   }
-  // After the origin check, so a forged request spends nobody's budget. The password routes only
-  // (see the sign-in throttle above).
+  // Apply both the legacy backoff and public endpoint budgets after the origin check.
   if (key in THROTTLED) {
     const addr = limitAddress(req);
     const kind = THROTTLED[key];
     const wait = AUTH_BURST.take(addr) || (kind ? ADDR_FAILS.retryAfter(kind + '|' + addr) : 0);
+    if (wait) return tooMany(res, wait);
+  }
+  const family = PUBLIC_AUTH.get(key);
+  if (family) {
+    const { all, ip } = publicLimits[family];
+    const wait = all.retryAfter('all') || ip.take(limitAddress(req)) || all.take('all');
     if (wait) return tooMany(res, wait);
   }
   try { await handler(req, res); }

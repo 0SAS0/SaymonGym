@@ -141,10 +141,10 @@ export function softPasskey(ORIGIN = 'http://localhost:8080') {
         response: { clientDataJSON: b64u(clientDataJSON), attestationObject: b64u(attestationObject), transports: ['internal', 'hybrid'] }
       };
     },
-    assertion(challenge, { origin = ORIGIN } = {}) {
+    assertion(challenge, { origin = ORIGIN, verified = true } = {}) {
       const clientDataJSON = Buffer.from(JSON.stringify({ type: 'webauthn.get', challenge, origin, crossOrigin: false }));
       const c = Buffer.alloc(4); c.writeUInt32BE(++counter);
-      const authData = Buffer.concat([sha('localhost'), Buffer.from([0x05]), c]);
+      const authData = Buffer.concat([sha('localhost'), Buffer.from([verified ? 0x05 : 0x01]), c]);
       const signature = crypto.sign('sha256', Buffer.concat([authData, sha(clientDataJSON)]), privateKey);
       return {
         id, rawId: id, type: 'public-key', clientExtensionResults: {}, authenticatorAttachment: 'platform',
@@ -152,5 +152,15 @@ export function softPasskey(ORIGIN = 'http://localhost:8080') {
       };
     }
   };
+}
+
+export async function adminProof(url, headers, action, body, key, assertionOptions) {
+  const response = await fetch(url + '/api/admin/passkey/options', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ ...body, action })
+  });
+  if (!response.ok) throw new Error(`Admin challenge refused: ${response.status} ${await response.text()}`);
+  const { cid, options } = await response.json();
+  return { cid, credential: key.assertion(options.challenge, assertionOptions) };
 }
 

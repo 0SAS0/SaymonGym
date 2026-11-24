@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { api } from '../lib/api.js'
+import { api, adminPasskeyAction } from '../lib/api.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur } from '../lib/format.js'
 import { auditCat, auditLine, fmtWhen } from '../lib/audit.js'
 import { workoutVolume, setsDone } from '../lib/history.js'
@@ -88,7 +88,7 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000)
   }
   const doDelete = () => {
-    api('/api/admin/user/delete', { method: 'POST', body: JSON.stringify({ id: u.id }) })
+    adminPasskeyAction('/api/admin/user/delete', 'delete', { id: u.id })
       .then(() => { toast('Account deleted'); onChanged(); close() })
       .catch(e => toast(e.message))
   }
@@ -98,14 +98,14 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
       .catch(e => toast(e.message))
   }
   // One owner, any number of admins: only the owner appoints, removes or hands the role on.
-  const setRole = admin => api('/api/admin/user/role', { method: 'POST', body: JSON.stringify({ id: u.id, admin }) })
+  const setRole = admin => adminPasskeyAction('/api/admin/user/role', 'role', { id: u.id, admin })
     .then(() => { toast(admin ? u.name + ' is an admin now' : u.name + ' is no longer an admin'); onChanged(); close() })
     .catch(e => toast(e.message))
   const makeOwner = () => confirmSheet({
     title: 'Make ' + u.name + ' the owner?',
     message: 'They get everything you can do here, including removing admins and clearing the activity log. You stay an admin, but only they can change that.',
     confirmText: 'Hand it over', danger: true,
-    onConfirm: () => api('/api/admin/owner', { method: 'POST', body: JSON.stringify({ id: u.id }) })
+    onConfirm: () => adminPasskeyAction('/api/admin/owner', 'owner', { id: u.id })
       .then(() => { toast(u.name + ' owns this instance now'); onChanged(); close() })
       .catch(e => toast(e.message)),
   })
@@ -117,7 +117,7 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
     message: 'You get a one-time code to hand them. Their current password stops working now and they are signed out everywhere; their passkeys keep working. They set a new password with the code under “Sign in with password”. It is shown once and is valid for 24 hours.',
     confirmText: 'Create reset code',
     danger: true,
-    onConfirm: () => api('/api/admin/user/password-reset', { method: 'POST', body: JSON.stringify({ id: u.id }) })
+    onConfirm: () => adminPasskeyAction('/api/admin/user/password-reset', 'password-reset', { id: u.id })
       .then(r => { onChanged(); close(); openSheet(done => <ResetCodeSheet name={r.name} email={u.email} code={r.code} expires={r.expires} close={done} />, { locked: true }) })
       .catch(e => toast(e.message)),
   })
@@ -129,7 +129,7 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
     message: 'For someone who lost every way in: their devices and passkey are gone, and they have no password. You get a one-time code to hand them; the device they enter it on gets a new passkey. They are signed out everywhere now. Their passkeys and password stay. It is shown once and is valid for 24 hours.',
     confirmText: 'Create recovery code',
     danger: true,
-    onConfirm: () => api('/api/admin/user/recovery', { method: 'POST', body: JSON.stringify({ id: u.id }) })
+    onConfirm: () => adminPasskeyAction('/api/admin/user/recovery', 'recovery', { id: u.id })
       .then(r => { onChanged(); close(); openSheet(done => <RecoveryCodeSheet name={r.name} code={r.code} expires={r.expires} close={done} />, { locked: true }) })
       .catch(e => toast(e.message)),
   })

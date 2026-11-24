@@ -1,0 +1,83 @@
+name: saymongym
+
+services:
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2}
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+      ADMIN_NET: ${ADMIN_NET:?set ADMIN_NET}
+      INVITE_ONLY: ${INVITE_ONLY:-1}
+      CADDY_ADMIN_ONLY: ${CADDY_ADMIN_ONLY:-0}
+    ports:
+      - target: 80
+        published: '80'
+        host_ip: ${CADDY_BIND_IP:-0.0.0.0}
+      - target: 443
+        published: '443'
+        host_ip: ${CADDY_BIND_IP:-0.0.0.0}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      edge:
+        ipv4_address: 172.30.84.2
+
+  web:
+    image: saymongym-web:${APP_REV:?set APP_REV}
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: web/Dockerfile
+      args:
+        VCS_REF: ${APP_REV}
+        APP_BUILD: ${APP_REV}
+        INCLUDE_EXERCISE_MEDIA: '0'
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      PROXY_REAL_IP_FROM: 172.30.84.2
+    networks:
+      edge:
+        aliases: [saymongym-web]
+      backend:
+        ipv4_address: 172.30.85.2
+
+  api:
+    image: saymongym-api:${APP_REV:?set APP_REV}
+    pull_policy: never
+    build:
+      context: ../../api
+      target: ${API_TARGET:-default}
+      args:
+        VCS_REF: ${APP_REV}
+    restart: unless-stopped
+    env_file: ${SAYMONGYM_ENV_FILE:-/srv/saymongym/config/public.env}
+    environment:
+      PORT: '3000'
+      DATA_DIR: /data
+      INVITE_ONLY: ${INVITE_ONLY:-1}
+      FIRST_USER_ADMIN: ${FIRST_USER_ADMIN:-0}
+      TRUST_PROXY: '1'
+      TRUST_PROXY_PEERS: 172.30.85.2
+    volumes:
+      - ${STATE_DIR:?set STATE_DIR}:/data
+    networks:
+      - backend
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.84.0/24
+  backend:
+    ipam:
+      config:
+        - subnet: 172.30.85.0/24
+
+volumes:
+  caddy_data:
+  caddy_config:

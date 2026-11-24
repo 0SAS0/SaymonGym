@@ -12,6 +12,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
    any of this there. */
 const mocks = vi.hoisted(() => ({ answers: {}, sheets: [], posts: [], confirm: vi.fn() }))
 vi.mock('../lib/api.js', () => ({
+  adminPasskeyAction: (path, action, body) => {
+    mocks.posts.push({ path, action, body })
+    return path in mocks.answers ? Promise.resolve(mocks.answers[path]) : Promise.reject(new Error('not found'))
+  },
   api: (path, init) => {
     if (init?.method === 'POST') mocks.posts.push({ path, body: JSON.parse(init.body) })
     const key = path.split('?')[0]
@@ -95,7 +99,7 @@ describe('Admin → Reset password', () => {
     const before = mocks.sheets.length
     await act(async () => { await opts.onConfirm() })
     await settle()
-    expect(mocks.posts).toEqual([{ path: '/api/admin/user/password-reset', body: { id: 'u1' } }])
+    expect(mocks.posts).toEqual([{ path: '/api/admin/user/password-reset', action: 'password-reset', body: { id: 'u1' } }])
     const shown = mocks.sheets.slice(before).find(s => s.opts?.locked)
     expect(shown).toBeTruthy()
     const code = render(shown.render(() => {}))

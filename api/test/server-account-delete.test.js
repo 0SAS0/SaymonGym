@@ -1,8 +1,8 @@
 /* The account's own delete (App Store rule 5.1.1(v)): a signed-in profile removes itself with
    the same clean-up the admin's delete runs (removeAccount in server.js), typing its name back
    and proving it is the owner the way the other changes to a way in do (proveOwner): here with
-   the current password, the passkey half is in server-passkeys.test.js. A paired phone, which
-   can hold no passkey for the server, proves a profile without a password by its pairing. The last admin cannot
+   the current password, the passkey half is in server-passkeys.test.js. Pairing alone never
+   authorizes deletion. The last admin cannot
    leave an instance others still use. Real server.js in a child, same harness as
    server-admin-delete.test.js. */
 import { test, before } from 'node:test';
@@ -160,7 +160,7 @@ test('the only profile on the instance can delete itself, admin or not', async t
   assert.equal(fs.existsSync(path.join(h.dataDir, `state-${ADMIN}.json`)), false);
 });
 
-test('a paired phone: the pairing is the proof without a password, the password with one', async t => {
+test('a paired phone must supply a password when enabled or use the web', async t => {
   const h = await startServer(t, { users: ['admin', 'user', 'nopw'] });
   const phone = (uid, body) => fetch(`${h.api}/api/account/delete`, {
     method: 'POST', headers: { Authorization: `Bearer ${mintSession(uid)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body)
@@ -175,14 +175,16 @@ test('a paired phone: the pairing is the proof without a password, the password 
   // The name and the last admin still come first.
   assert.equal((await phone('u_nopw', { name: 'keyonly' })).body.code, 'confirm-name');
 
-  // Passkey-only: the phone cannot hold a passkey for the server, so the pairing proves it.
+  // An older APK sends no server-verifiable proof for a profile without a password.
   const keyOnly = await phone('u_nopw', { name: 'Keyonly' });
-  assert.equal(keyOnly.status, 200);
-  assert.deepEqual(h.db().users.map(u => u.id).sort(), [ADMIN, USER].sort());
-  assert.equal(h.audit().find(r => r.ev === 'auth.account.delete')?.msg, 'device');
+  assert.equal(keyOnly.status, 403);
+  assert.equal(keyOnly.body.code, 'passkey-required');
+  assert.equal((await fetch(`${h.api}/api/data`, {
+    headers: { Authorization: `Bearer ${mintSession('u_nopw')}` }
+  })).status, 200, 'sync still works after the refusal');
 
   assert.equal((await phone(USER, { name: 'Mallory', current: GOOD })).status, 200);
-  assert.deepEqual(h.db().users.map(u => u.id), [ADMIN]);
+  assert.deepEqual(h.db().users.map(u => u.id), [ADMIN, 'u_nopw']);
 });
 
 test('a browser never gets the phone’s pass: no proof, no delete', async t => {
@@ -205,14 +207,19 @@ test('a browser cookie replayed as a Bearer is still a cookie: no device pass', 
   assert.equal(r.status, 403);
   assert.equal((await r.json()).code, 'passkey-required');
   assert.equal(h.db().users.length, 2, 'nothing was removed');
-  // A token the pairing made (`b`) still carries the device pass.
+  // A token the pairing made (`b`) grants neither deletion nor a browser challenge.
   const pb = `u_nopw:${Date.now() + 86400000}:0:b`;
   const paired = pb + '.' + crypto.createHmac('sha256', SECRET).update(pb).digest('base64url');
-  const ok = await fetch(`${h.api}/api/account/delete`, {
+  const refused = await fetch(`${h.api}/api/account/delete`, {
     method: 'POST', headers: { Authorization: `Bearer ${paired}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'Keyonly' })
   });
-  assert.equal(ok.status, 200);
+  assert.equal(refused.status, 403);
+  for (const headers of [{ Authorization: `Bearer ${paired}` }, { Cookie: `gymsid=${paired}` }]) {
+    const challenge = await fetch(`${h.api}/api/account/delete/options`, { method: 'POST', headers });
+    assert.equal(challenge.status, 403);
+  }
+  assert.equal(h.db().users.length, 2);
 });
 
 test('needs proof that the owner is here: missing or wrong, nothing is removed', async t => {

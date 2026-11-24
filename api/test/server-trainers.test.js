@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundPort } from './helpers.mjs';
+import { adminProof, boundPort, softPasskey } from './helpers.mjs';
 
 const API = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SECRET = crypto.randomBytes(32).toString('hex');
@@ -27,9 +27,10 @@ const USERS = [
 ];
 
 async function start(t, env = {}) {
+  const key = softPasskey();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-trainers-'));
   fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 });
-  fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({ users: USERS.map(u => ({ ...u, created: new Date().toISOString() })), creds: [], subs: [], invites: [] }));
+  fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({ users: USERS.map(u => ({ ...u, created: new Date().toISOString() })), creds: [key.row('u_admin')], subs: [], invites: [] }));
   fs.writeFileSync(path.join(dataDir, 'state-u_lea.json'), JSON.stringify({
     unit: 'kg', _rev: 3, workouts: [{ id: 'w1', name: 'Push A', d: '2026-11-01', start: 1, end: 2, entries: [] }],
     bodyweight: [{ d: '2026-11-01', w: 68.4 }], routines: [{ id: 'r1', name: 'Push A', ex: [] }]
@@ -44,8 +45,12 @@ async function start(t, env = {}) {
   t.after(() => { child.kill('SIGKILL'); fs.rmSync(dataDir, { recursive: true, force: true }); });
   const port = await boundPort(child, () => h.log);
   h.call = async (who, method, p, body) => {
+    const session = who ? { Cookie: 'gymsid=' + mint(who) } : {};
+    if (p === '/api/admin/user/delete' && who === 'u_admin') {
+      body = { ...body, ...await adminProof('http://127.0.0.1:' + port, session, 'delete', body, key) };
+    }
     const r = await fetch(`http://127.0.0.1:${port}${p}`, {
-      method, headers: { 'Content-Type': 'application/json', ...(who ? { Cookie: `gymsid=${mint(who)}` } : {}) },
+      method, headers: { 'Content-Type': 'application/json', ...session },
       ...(body ? { body: JSON.stringify(body) } : {})
     });
     return { status: r.status, body: await r.json().catch(() => null), headers: r.headers };

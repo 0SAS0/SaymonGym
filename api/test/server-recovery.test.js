@@ -13,7 +13,7 @@ import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { hashLinkCode } from '../device-link.js';
 import { MAX_PASSKEYS } from '../passkeys-store.js';
-import { boundPort } from './helpers.mjs';
+import { adminProof, boundPort } from './helpers.mjs';
 import { softPasskey, ORIGIN } from './soft-passkey.mjs';
 
 const API = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,11 +25,13 @@ const mintSession = (uid, sv = 0) => {
 const CODE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/;
 
 async function startServer(t, { env = {}, users = [], creds = [] } = {}) {
+  const adminKeys = new Map(users.filter(u => u.admin || env.ADMIN_UIDS?.split(',').includes(u.id)).map(u => [u.id, softPasskey()]));
+  creds = [...creds, ...Array.from(adminKeys, ([id, key]) => key.row(id))];
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-rec-'));
   fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 });
   fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({ users, creds, subs: [], invites: [] }));
   // Password sign-in OFF: recovery has to work without it.
-  const childEnv = { ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN, RP_ID: 'localhost', PASSWORD_LOGIN: '', TRUST_PROXY: '1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env };
+  const childEnv = { ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN, RP_ID: 'localhost', PASSWORD_LOGIN: '', TRUST_PROXY: '1', TRUST_PROXY_PEERS: '127.0.0.1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env };
   const child = spawn(process.execPath, ['server.js'], { cwd: API, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv });
   const h = { api: '', log: '', dataDir, env: childEnv, child };
   child.stdout.on('data', d => h.log += d);
@@ -37,6 +39,8 @@ async function startServer(t, { env = {}, users = [], creds = [] } = {}) {
   t.after(() => { child.kill('SIGKILL'); fs.rmSync(dataDir, { recursive: true, force: true }); });
   h.api = `http://127.0.0.1:${await boundPort(child, () => h.log)}`;
   h.req = async (method, p, { body, cookie, ip = '198.51.100.1' } = {}) => {
+    const adminKey = p === '/api/admin/user/recovery' && adminKeys.get(cookie?.slice(7).split(':')[0]);
+    if (adminKey) body = { ...body, ...await adminProof(h.api, { Cookie: cookie, 'X-Forwarded-For': ip }, 'recovery', body, adminKey) };
     const r = await fetch(`${h.api}${p}`, {
       method,
       headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin', 'X-Forwarded-For': ip, ...(cookie ? { Cookie: cookie } : {}) },

@@ -37,17 +37,25 @@ info:
     paused the same way, as typed. A password check counts from the moment it
     starts, so checks sent at once get no more tries than checks sent one by one. A
     paused caller gets `429 {"error": …, "code": "locked", "retryAfter": <s>}` with a
-    `Retry-After` header. Passkey sign-up and sign-in and the pairing routes are not
-    throttled (their failures reach the audit log at most ten a minute per address).
+    `Retry-After` header. The passkey, password, registration, recovery and pairing
+    routes also have separate per-address and shared per-process budgets in 60-second
+    windows. OIDC shares the passkey sign-in budget.
     The two routes that redeem a one-time device link (tag `passkeys`) share
     the per-address budget, and wrong codes pause the address for link redemption only,
     from the 21st on, the way wrong reset codes do. Adding or removing a passkey in Settings
     (`POST /api/account/passkeys/options`, `DELETE /api/account/passkeys`) and making a
     device code (`POST /api/account/device-link`) spend the per-address budget too, and a
     current password given there as proof counts like one given at sign-in.
-    The address is the socket's, or with `TRUST_PROXY=1` the one a trusted proxy put in
-    `CF-Connecting-IP` / the last `X-Forwarded-For` entry / `X-Real-IP`; IPv6 clients are
+    The address is the socket's, or a single `X-Forwarded-For` address if
+    `TRUST_PROXY=1` and the immediate peer is in `TRUST_PROXY_PEERS`. IPv6 clients are
     counted by /64. Counters live in memory and reset on restart.
+
+    ### Administrative confirmation
+    Recovery, password reset, account deletion by an admin, role changes and ownership
+    transfers require a fresh assertion. Request it at `/api/admin/passkey/options`
+    and include the returned `cid` and signed `credential` with the operation.
+    The challenge expires after five minutes, is single-use and is bound to the
+    session, action, target profile and, for role changes, the intended role.
 
     ### Sessions
     The cookie/bearer value is `<payload>.<hmac>` where the payload is
@@ -813,6 +821,27 @@ paths:
               schema: { $ref: '#/components/schemas/Ok' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/account/delete/options:
+    post:
+      tags: [auth, passkeys]
+      operationId: accountDeleteOptions
+      summary: Request a passkey challenge for deleting your account
+      description: Browser cookie session only. The five-minute challenge is single-use and bound to this session and account. User verification is required.
+      responses:
+        '200':
+          description: A deletion challenge and WebAuthn request options.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cid, options]
+                properties:
+                  cid: { type: string }
+                  options: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ProofRefused' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /api/account/delete:
     post:
       tags: [auth]
@@ -824,18 +853,16 @@ paths:
         subscriptions, their live presence, their training history file, their
         uploaded photos and videos (`DATA_DIR/uploads/<uid>/`) and any Coach credential
         stored for them. Not reversible. The body carries the account's name, typed back
-        by its owner, and the same proof as setting a password (see OwnerProof): a
-        passkey assertion made for this request, or the current password while
-        `PASSWORD_LOGIN` is on. A paired phone (Bearer token) cannot hold a passkey for
-        the server, so for a profile with no password that counts the pairing itself is
-        the proof (audited as `device`; the app asks the phone's own screen lock first);
-        a profile with one sends the current password from the phone too. Cookie
-        sessions always need the proof. The name and the last-admin rule are checked
+        by its owner, and an assertion from `POST /api/account/delete/options` with
+        user verification, the current password while `PASSWORD_LOGIN` is on, or a
+        fresh OIDC proof in a browser when OIDC is configured. Pairing on its own never
+        proves deletion. A paired phone can use the current password when configured
+        and otherwise receives 403 with `passkey-required`. The name and the last-admin rule are checked
         before the proof is asked. The last admin is refused while any other profile remains (the
         instance would be left with nobody to run it); the only profile on an instance
         may delete itself. Clears the caller's cookie; every other session and Bearer
         token of the account stops working with it. Audited as `auth.account.delete`,
-        with the name and the proof it was made with (`passkey`, `password`, `device`); a refused proof as
+        with the name and the proof it was made with (`passkey`, `password`, `provider`); a refused proof as
         `auth.proof.fail` with `act: account-delete`.
       requestBody:
         required: true
@@ -1814,6 +1841,40 @@ paths:
         '403': { $ref: '#/components/responses/ProofRefused' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '503': { $ref: '#/components/responses/Busy' }
+
+  /api/admin/passkey/options:
+    post:
+      tags: [admin, passkeys]
+      operationId: adminPasskeyOptions
+      summary: Request a passkey challenge for a sensitive administrative action
+      description: User verification is required. Role and ownership changes are reserved for the owner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, id]
+              properties:
+                action: { type: string, enum: [recovery, password-reset, delete, role, owner] }
+                id: { type: string, description: Target profile ID. }
+                admin: { type: boolean, description: Required for role changes. }
+      responses:
+        '200':
+          description: An administrative challenge and WebAuthn request options.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cid, options]
+                properties:
+                  cid: { type: string }
+                  options: { type: object, additionalProperties: true }
+        '400':
+          description: Invalid action or target.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/admin/user/recovery:
     post:

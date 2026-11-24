@@ -20,10 +20,9 @@ services:
       # cannot drift — change it in .env and both follow.
       - PORT=${PORT:-3000}
       - DATA_DIR=/data
-      # The API is reachable only through the web container here, and that container overwrites
-      # X-Forwarded-For / X-Real-IP with the real peer — so the sign-in throttle may count
-      # requests by those headers instead of lumping everyone in as "the web container".
+      # Local SaymonGym builds also require the explicitly trusted web container address.
       - TRUST_PROXY=${TRUST_PROXY:-1}
+      - TRUST_PROXY_PEERS=${TRUST_PROXY_PEERS:-}
     volumes:
       - ./data:/data         # users, passkeys, per-user state, session secret — BACK THIS UP
                              # (and uploads/: the photos and videos of custom exercises)
@@ -50,13 +49,12 @@ services:
     # hardcoded values, so an existing .env and an existing stack are unaffected.
     environment:
       - NGINX_PORT=${NGINX_PORT:-80}
+      - PROXY_REAL_IP_FROM=${PROXY_REAL_IP_FROM:-127.0.0.1}
       - BACKEND=${BACKEND:-api}
       - PORT=${PORT:-3000}
       # Docker's embedded DNS. Only ever needs changing on a runtime that is not Docker.
       - RESOLVER=${RESOLVER:-127.0.0.11}
-      # Empty drops the CF-Connecting-IP header, so a direct client cannot forge the address
-      # the activity log records. Cloudflare users set CF_CONNECTING_IP='$http_cf_connecting_ip'
-      # in .env, single quotes included, or Compose expands it to an empty string.
+      # Compatibility for the upstream web image. SaymonGym ignores this header.
       - CF_CONNECTING_IP=${CF_CONNECTING_IP:-}
       # Subpath deployments behind a proxy that passes its prefix through ("/gym", no trailing
       # slash). Empty serves the app at the site root, which is what it has always done; a proxy

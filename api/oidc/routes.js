@@ -267,7 +267,8 @@ export function oidcRoutes(d) {
     // The phone trades its one-time code and its verifier for the same token a pairing gives.
     'POST /api/oidc/app/redeem': async (req, res) => {
       const body = await readBody(req);
-      if (throttled(req)) return json(res, 429, { error: 'too many attempts, try again later', code: 'locked' });
+      const wait = throttled(req);
+      if (wait) return json(res, 429, { error: 'too many attempts, try again later', code: 'locked', retryAfter: wait }, { 'Retry-After': String(wait) });
       const h = handoffs.take(typeof body.code === 'string' ? body.code : '', now());
       const verifier = typeof body.verifier === 'string' ? body.verifier : '';
       const user = h && d.db().users.find(u => u.id === h.uid);

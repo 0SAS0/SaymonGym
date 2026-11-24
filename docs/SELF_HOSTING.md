@@ -458,16 +458,13 @@ a LAN-only address, see [SELF_HOSTING_HTTPS.md](./SELF_HOSTING_HTTPS.md).
   passwords guessing scripts try first (`Password123!`, `qwerty…`, the profile's own name with
   digits). A long passphrase is the point.
 
-**Which address counts as one visitor.** The throttle needs the visitor's address. With the
-bundled `docker-compose.yml` it reads the one the web container passes on: the compose file sets
-`TRUST_PROXY=1` for the api, because the API is reachable only through that container, which
-overwrites `X-Forwarded-For`. If you put another reverse proxy in front of the web container, every
-visitor may arrive as that proxy — then the per-address limits apply to everyone together: one
-client sending wrong passwords can pause password sign-in for everybody for up to 15 minutes at a
-time (passkeys keep working), and the per-name pause is what protects the passwords. Behind
-Cloudflare, `CF_CONNECTING_IP` (see the activity log above) passes the real visitor on. Running
-the API without the web container, leave `TRUST_PROXY` off unless whatever is in front overwrites
-(not appends to) `X-Forwarded-For`.
+**Which address counts as one visitor.** By default the API uses the socket peer address.
+For proxied requests, set `TRUST_PROXY=1` and list the fixed IP addresses of the final proxy
+in `TRUST_PROXY_PEERS`. Each trusted peer must overwrite `X-Forwarded-For` with one verified
+address. If another proxy sits in front of Nginx, set `PROXY_REAL_IP_FROM` to that proxy's
+private address and have it overwrite the incoming forwarding header. The
+[public deployment example](../deploy/public/README.md) pins both addresses. An omitted trusted
+peer makes requests arriving on the same proxy share one rate-limit budget.
 
 **Switching it off again** hides all of it and makes every password route answer 404. The stored
 hashes stay in `db.json` and work again if you switch it back on — but while it is off, a profile
