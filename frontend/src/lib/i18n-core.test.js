@@ -26,6 +26,28 @@ describe('baseLang', () => {
   })
 })
 
+describe('SaymonGym product branding', () => {
+  it('brands product copy in English and translated packs while retaining compatibility terms', () => {
+    _setLangState('en', {}, null, null)
+    expect(t('Reload openGym')).toBe('Reload SaymonGym')
+    expect(t('openGym Offline has no internet permission. Your training stays on this phone, full stop.'))
+      .toContain('SaymonGym Offline')
+    expect(t('That’s an openGym backup or plan file. Use Import backup, or import it on the Plan screen.'))
+      .toContain('openGym backup')
+    expect(t('openGym can no longer write to “{0}”, so copies go to Documents/openGym again.', 'folder'))
+      .toContain('SaymonGym can no longer write')
+    expect(t('openGym can no longer write to “{0}”, so copies go to Documents/openGym again.', 'folder'))
+      .toContain('Documents/openGym')
+    const pathKey = 'Saves a dated copy to Documents/openGym after finishing a workout or editing a routine, and keeps the newest {0}. Point a sync app at that folder, or copy it out by hand.'
+    _setLangState('pl', { [pathKey]: 'Zapisuje kopię do Dokumenty/openGym, zostawiając {0} plików.' }, null, null)
+    expect(t(pathKey, 5)).toContain('Dokumenty/openGym')
+
+    _setLangState('pl', { 'Reload openGym': 'Przeładuj openGym' }, null, null)
+    expect(t('Reload openGym')).toBe('Przeładuj SaymonGym')
+    _setLangState('en', {}, null, null)
+  })
+})
+
 describe('derivePack', () => {
   it('rewrites ß as ss for Swiss German', () => {
     expect(derivePack('de-CH', { a: 'Gesäß', b: 'Füße', c: 'schließen' }))

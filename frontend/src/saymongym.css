@@ -1,5 +1,5 @@
 /* SaymonGym visual layer. Keep the existing component system and its light theme intact. */
-:root:not([data-theme="light"]) {
+:root:not([data-theme="light"])[data-accent="brand"] {
   --bg: #0B1118;
   --bg-el: #0e1720;
   --surface: #121d27;
@@ -64,7 +64,7 @@
 #tabbar button { min-height: 52px; }
 #tabbar button.on:not(.start) { color: var(--acc-ink); }
 #tabbar button.on:not(.start) .tab-ic { background: var(--acc-soft); border-radius: 14px; }
-#tabbar .start .cir { box-shadow: 0 5px 18px rgba(66, 232, 193, .22); }
+#tabbar .start .cir { box-shadow: 0 5px 18px rgba(66, 232, 193, .22); box-shadow: 0 5px 18px color-mix(in srgb, var(--acc) 22%, transparent); }
 
 body.no-tabbar .setrow { box-sizing: border-box; gap: 8px; padding-block: 9px; padding-inline-end: 12px; border: 1px solid transparent; border-radius: 13px; }
 body.no-tabbar .setrow .stp .num { min-height: 48px; font-size: max(var(--fs-body), 1.125rem); font-weight: 600; }

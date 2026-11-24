@@ -81,15 +81,29 @@ export const getLang = () => lang
 export const dateLocale = () => DATE_LOCALES[lang] || 'en-GB'
 export const getVersion = () => version
 
+// Product copy uses the SaymonGym name. Keep occurrences that identify compatible server data,
+// server software, import formats, technical paths or endpoints intact.
+function saymonBrand(source, value) {
+  if (typeof value !== 'string') return value
+  return value.replace(/open\s?gym/ig, (name, at, whole) => {
+    const before = whole.slice(Math.max(0, at - 12), at)
+    const after = whole.slice(at + name.length)
+    // These occurrences identify compatible technical resources, not the app's product name.
+    if (/\/$/.test(before) || /^(?:\.ch|\s+(?:server|backup|plan\s+file|data|answer)\b)/i.test(after) || /self-hosted\s+$/i.test(before)) return name
+    return 'SaymonGym'
+  })
+}
+
 // Translate a source string; {0},{1}… are replaced with args (also on the English fallback).
 export function t(s, ...args) {
-  let v = dict[s] || s
+  let v = saymonBrand(s, dict[s] || s)
   // A plural key (an object of forms, read by tn()) reached through plain t() — a call site
   // that was not moved to tn(). Pick a form rather than crash on replaceAll.
   if (v && typeof v === 'object') {
     const forms = v
     v = (typeof args[0] === 'number' && forms[pluralCategory(args[0])]) || forms.other || forms.many || forms.one || s
   }
+  v = saymonBrand(s, v)
   for (let i = 0; i < args.length; i++) v = v.replaceAll('{' + i + '}', args[i])
   return v
 }
@@ -125,7 +139,7 @@ export function tn(one, other, n, ...rest) {
   if (forms && typeof forms === 'object') {
     const form = forms[pluralCategory(n)] || forms.other || forms.many || forms.one
     if (form) {
-      let v = form
+      let v = saymonBrand(other, form)
       const args = [n, ...rest]
       for (let i = 0; i < args.length; i++) v = v.replaceAll('{' + i + '}', args[i])
       return v
@@ -140,8 +154,8 @@ export function tn(one, other, n, ...rest) {
  */
 export function tnf(one, other, n, shown, ...rest) {
   const forms = dict[other]
-  let v = forms && typeof forms === 'object' ? (forms[pluralCategory(n)] || forms.other || forms.many || forms.one) : null
-  if (!v) v = (n === 1 ? dict[one] : (typeof forms === 'string' ? forms : null)) || (n === 1 ? one : other)
+  let v = forms && typeof forms === 'object' ? saymonBrand(other, forms[pluralCategory(n)] || forms.other || forms.many || forms.one) : null
+  if (!v) v = saymonBrand(n === 1 ? one : other, (n === 1 ? dict[one] : (typeof forms === 'string' ? forms : null)) || (n === 1 ? one : other))
   const args = [shown, ...rest]
   for (let i = 0; i < args.length; i++) v = v.replaceAll('{' + i + '}', args[i])
   return v
