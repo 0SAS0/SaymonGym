@@ -42,6 +42,15 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
     if (!cfgStore.isEnabled() || !cfgStore.isConnected()) { json(res, 503, { error: USER_ERROR.off, code: 'off' }); return null; }
     return user;
   };
+  const activeAdmin = (req, res) => {
+    const admin = requireAdmin(req, res);
+    if (!admin) return null;
+    if (cfgStore.COACH_DISABLED) {
+      json(res, 503, { error: USER_ERROR.off, code: 'off' });
+      return null;
+    }
+    return admin;
+  };
   const failEnqueue = (res, e) => {
     if (e instanceof jobs.CoachError) return json(res, HTTP_FOR[e.code] || 400, { error: USER_ERROR[e.code] || e.message, code: e.code });
     throw e;
@@ -206,7 +215,8 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       // run, and the card reports the runtime unavailable with the reason.
       const cred = adapter?.spawns === false ? cfgStore.credentialFor(cfgStore.boundUidFor(cfg)) : undefined;
       const refusal = privilegeRefusal(adapter);
-      const check = !adapter ? { ok: false, error: 'unknown provider' }
+      const check = cfgStore.COACH_DISABLED ? { ok: false, error: USER_ERROR.off }
+        : !adapter ? { ok: false, error: 'unknown provider' }
         : refusal ? { ok: false, error: refusal }
         : await adapter.check(cfg, cfgStore.jobEnv(process.env.TMPDIR || '/tmp', cred?.ok ? cred : undefined));
       const log = cfg.log || [];
@@ -269,7 +279,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
     },
 
     'POST /api/admin/coach/config': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
+      if (!activeAdmin(req, res)) return;
       const body = await readBody(req);
       const patch = {};
       if (body.enabled !== undefined) patch.enabled = !!body.enabled;
@@ -344,7 +354,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
     },
 
     'POST /api/admin/coach/test': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
+      if (!activeAdmin(req, res)) return;
       const r = await jobs.testRun();
       json(res, 200, r);
     },
@@ -352,7 +362,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
     /* The models the configured endpoint serves, so the card can offer a list rather than a
        text field that goes stale with every model release. HTTPS providers only. */
     'POST /api/admin/coach/models': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
+      if (!activeAdmin(req, res)) return;
       const cfg = cfgStore.load();
       const adapter = adapterFor(cfg.provider);
       if (!adapter || typeof adapter.models !== 'function') return json(res, 200, { ok: false, error: 'this provider does not list models', models: [] });
@@ -365,7 +375,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
        machine), found by asking a fixed list of addresses for their models. Admin only, and the
        list never comes from the request, so it cannot be aimed anywhere else. */
     'POST /api/admin/coach/discover': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
+      if (!activeAdmin(req, res)) return;
       const hosts = ['ollama', 'lmstudio', 'llama', 'host.docker.internal', '172.17.0.1', 'localhost'];
       json(res, 200, { ok: true, found: await discoverLocal(candidatesFor(hosts)) });
     },
@@ -379,7 +389,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
        the configured provider actually declares, so a Codex key cannot be filed under Claude
        and then silently go nowhere at job time. */
     'POST /api/admin/coach/connect': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
+      if (!activeAdmin(req, res)) return;
       const body = await readBody(req);
       const cfg = cfgStore.load();
       // A key may be filed for a provider that is not the active one, so the chips can be
@@ -406,7 +416,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
        page that does not load, and Finish takes the address it shows. The verifier never leaves
        this server. 404 without the switch, like a route that is not there. */
     'POST /api/admin/coach/chatgpt/start': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
+      if (!activeAdmin(req, res)) return;
       if (!chatgptPlan.on() || !cfgStore.PROVIDERS[CHATGPT]) return json(res, 404, { error: 'not found' });
       const cfg = cfgStore.load();
       let hostId = cfg.chatgptHost;
@@ -418,7 +428,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       json(res, 200, { url: s.url, redirect: chatgptPlan.REDIRECT_URI });
     },
     'POST /api/admin/coach/chatgpt/finish': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
+      if (!activeAdmin(req, res)) return;
       if (!chatgptPlan.on() || !cfgStore.PROVIDERS[CHATGPT]) return json(res, 404, { error: 'not found' });
       const body = await readBody(req);
       const cb = chatgptPlan.parseCallback(body.callback, chatgptPending);
@@ -442,7 +452,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
     },
 
     'POST /api/admin/coach/disconnect': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
+      if (!activeAdmin(req, res)) return;
       const body = await readBody(req);
       const provider = body.provider !== undefined ? String(body.provider) : cfgStore.load().provider;
       if (!cfgStore.PROVIDERS[provider]) return json(res, 400, { error: 'unknown provider' });

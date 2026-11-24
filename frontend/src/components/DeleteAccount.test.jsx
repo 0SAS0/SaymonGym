@@ -134,7 +134,7 @@ describe('DeleteAccountSheet', () => {
     await toProof(host, ' Mallory')
     await act(async () => { button(host, 'Confirm with a passkey').click() })
     await settle()
-    expect(mocks.passkeyAssertion).toHaveBeenCalled()
+    expect(mocks.passkeyAssertion).toHaveBeenCalledWith(expect.objectContaining({ accountDelete: true }))
     expect(mocks.deleteAccount).toHaveBeenCalledWith('Mallory', { cid: 'c1', credential: { id: 'k1' } })
     expect(p.close).toHaveBeenCalled()
     expect(p.done).toHaveBeenCalled()
@@ -190,7 +190,7 @@ describe('DeleteAccountSheet', () => {
     expect(password(host)).toBeTruthy()
   })
 
-  it('a phone with no password: its own lock is asked, then the pairing carries the delete', async () => {
+  it('a phone with no password: asks for the local lock before sending the legacy request', async () => {
     mocks.MOBILE = true
     mocks.proofs = { passkeys: [{ id: 'k1' }], password: false }
     const { p, host } = sheet()
@@ -199,10 +199,23 @@ describe('DeleteAccountSheet', () => {
     expect(password(host)).toBeNull()
     await act(async () => { button(host, 'Delete forever').click() })
     await settle()
-    expect(mocks.confirmDeviceOwner).toHaveBeenCalledWith('Confirm it’s you to delete your openGym account')
+    expect(mocks.confirmDeviceOwner).toHaveBeenCalledWith('Confirm it’s you to delete your SaymonGym account')
     expect(mocks.deleteAccount).toHaveBeenCalledWith('Mallory', {})
     expect(mocks.confirmDeviceOwner.mock.invocationCallOrder[0]).toBeLessThan(mocks.deleteAccount.mock.invocationCallOrder[0])
     expect(p.done).toHaveBeenCalled()
+  })
+
+  it('a phone remains on the confirmation sheet when the server requires a browser proof', async () => {
+    mocks.MOBILE = true
+    mocks.proofs = { passkeys: [{ id: 'k1' }], password: false }
+    mocks.deleteAccount.mockRejectedValue(fail(403, { code: 'passkey-required' }))
+    const { p, host } = sheet()
+    await toProof(host)
+    await act(async () => { button(host, 'Delete forever').click() })
+    await settle()
+    expect(alertText(host)).toBe('Your passkey could not be confirmed.')
+    expect(p.close).not.toHaveBeenCalled()
+    expect(p.done).not.toHaveBeenCalled()
   })
 
   it('backed out of the phone’s lock, or failed: nothing is sent and the sheet stays', async () => {

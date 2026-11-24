@@ -11,6 +11,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
    the server command) or oneself. Asks first, then shows the code exactly once, locked. */
 const mocks = vi.hoisted(() => ({ answers: {}, sheets: [], posts: [], confirm: vi.fn(), me: { id: 'adm', name: 'Admin', admin: true } }))
 vi.mock('../lib/api.js', () => ({
+  adminPasskeyAction: (path, action, body) => {
+    mocks.posts.push({ path, action, body })
+    return path in mocks.answers ? Promise.resolve(mocks.answers[path]) : Promise.reject(new Error('not found'))
+  },
   api: (path, init) => {
     if (init?.method === 'POST') mocks.posts.push({ path, body: JSON.parse(init.body) })
     const key = path.split('?')[0]
@@ -83,7 +87,7 @@ describe('Admin → Recovery code', () => {
     expect(ask.title).toBe('Recovery code for Mallory?')
     expect(ask.message).not.toMatch(/—/)
     await act(async () => { await ask.onConfirm() })
-    expect(mocks.posts).toEqual([{ path: '/api/admin/user/recovery', body: { id: 'u1' } }])
+    expect(mocks.posts).toEqual([{ path: '/api/admin/user/recovery', action: 'recovery', body: { id: 'u1' } }])
     const shown = mocks.sheets.at(-1)
     expect(shown.opts).toEqual({ locked: true })
     const code = render(shown.render(() => {}))

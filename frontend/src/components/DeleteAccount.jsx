@@ -5,9 +5,9 @@
 // export first (the very one Data & backup has, handed in by Settings) and asks for the
 // account's name typed back; then the owner's proof, the same step the other changes to a way in
 // ask (ProveOwner): a passkey, or the current password where it counts. The proof carries the
-// delete. The phone app holds no passkey for the server, so there a profile without a password is
-// proved by the pairing (the server's rule), after the phone's own screen lock says it is its
-// owner (DeviceConfirm). Shown only while signed in to or paired with a server: a phone in
+// delete. For profiles without a password, older servers may allow mobile deletion after
+// the screen lock (DeviceConfirm), while hardened servers require a browser. Shown only
+// while signed in to or paired with a server: a phone in
 // local-only mode has no account, and "Reset everything" is how it wipes its data.
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store/useStore.js'
@@ -87,7 +87,7 @@ export function DeleteAccountSheet({ close, exportBackup, exportBackupZip, hasMe
       <div className="dim small" style={{ marginBottom: 14 }}>{t('First confirm that it is you.')}</div>
       {!proofs ? (err ? <div className="small" role="alert" style={errStyle}>{err}</div> : <div className="dim small">{t('Loading…')}</div>)
         : MOBILE && !password ? <DeviceConfirm onConfirmed={() => remove({})} />
-        : <ProveOwner passkey={passkey} password={password} explain={deleteAccountError} danger submitText={t('Delete forever')} onProof={remove} />}
+        : <ProveOwner passkey={passkey} password={password} explain={deleteAccountError} danger submitText={t('Delete forever')} onProof={remove} accountDelete />}
       <div style={{ height: 8 }} />
       <Button type="button" variant="ghost" className="dim" onClick={() => setStep('name')}>{t('Back')}</Button>
     </>}

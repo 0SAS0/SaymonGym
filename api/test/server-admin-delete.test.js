@@ -11,17 +11,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundPort } from './helpers.mjs';
+import { adminProof, boundPort, softPasskey } from './helpers.mjs';
 
 const API = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SECRET = crypto.randomBytes(32).toString('hex');
-const mintSession = uid => {
-  const payload = `${uid}:${Date.now() + 86400000}:0`;
+const mintSession = (uid, kind = '') => {
+  const payload = `${uid}:${Date.now() + 86400000}:0${kind ? ':' + kind : ''}`;
   return payload + '.' + crypto.createHmac('sha256', SECRET).update(payload).digest('base64url');
 };
 const ADMIN = 'u_adm_1', ADMIN2 = 'u_adm_2', VICTIM = 'u_vic_1';
 const as = uid => ({ Cookie: `gymsid=${mintSession(uid)}`, 'Content-Type': 'application/json' });
 async function startServer(t, { twoAdmins = false } = {}) {
+  const adminKeys = new Map([[ADMIN, softPasskey()], [ADMIN2, softPasskey()]]);
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-del-'));
   fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 });
   const users = [
@@ -31,7 +32,7 @@ async function startServer(t, { twoAdmins = false } = {}) {
   if (twoAdmins) users.push({ id: ADMIN2, name: 'Second', created: new Date().toISOString(), admin: true });
   fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({
     users,
-    creds: [{ id: 'c-victim', userId: VICTIM, publicKey: 'x' }, { id: 'c-admin', userId: ADMIN, publicKey: 'y' }],
+    creds: [{ id: 'c-victim', userId: VICTIM, publicKey: 'x' }, ...users.filter(u => u.admin).map(u => adminKeys.get(u.id).row(u.id))],
     subs: [{ endpoint: 'https://push/victim', userId: VICTIM }, { endpoint: 'https://push/admin', userId: ADMIN }],
     invites: [{ code: 'CODE1', usedBy: VICTIM, usedAt: new Date().toISOString() }],
   }));
@@ -48,18 +49,42 @@ async function startServer(t, { twoAdmins = false } = {}) {
   // readiness signal — see boundPort in helpers.mjs for why the test does not pick one.
   h.port = await boundPort(child, () => h.log);
   h.api = `http://127.0.0.1:${h.port}`;
-  h.del = async (id, uid = ADMIN) => {
-    const r = await fetch(`${h.api}/api/admin/user/delete`, { method: 'POST', headers: { ...as(uid), Origin: 'http://localhost:8080' }, body: JSON.stringify({ id }) });
+  h.send = async (route, body, headers) => {
+    const r = await fetch(`${h.api}${route}`, { method: 'POST', headers, body: JSON.stringify(body) });
     return { status: r.status, body: await r.json() };
   };
+  h.proof = (headers, action, body, options) => adminProof(h.api, headers, action, body, adminKeys.get(ADMIN), options);
   h.post = async (route, body, uid = ADMIN) => {
-    const r = await fetch(`${h.api}${route}`, { method: 'POST', headers: { ...as(uid), Origin: 'http://localhost:8080' }, body: JSON.stringify(body) });
-    return { status: r.status, body: await r.json() };
+    const headers = { ...as(uid), Origin: 'http://localhost:8080' };
+    const action = { '/api/admin/user/delete': 'delete', '/api/admin/user/role': 'role', '/api/admin/owner': 'owner' }[route];
+    if ((action === 'delete' && uid !== VICTIM) || (action && uid === ADMIN)) {
+      body = { ...body, ...await adminProof(h.api, headers, action, body, adminKeys.get(uid)) };
+    }
+    return h.send(route, body, headers);
   };
+  h.del = (id, uid = ADMIN) => h.post('/api/admin/user/delete', { id }, uid);
   h.db = () => JSON.parse(fs.readFileSync(path.join(h.dataDir, 'db.json'), 'utf8'));
   h.stackFrames = () => h.log.split('\n').filter(l => /^\s+at /.test(l)).length;
   return h;
 }
+
+test('admin actions need a fresh, verified assertion bound to the session, action and target', async t => {
+  const h = await startServer(t, { twoAdmins: true });
+  const headers = as(ADMIN);
+  const route = '/api/admin/user/role';
+  const body = { id: VICTIM, admin: true };
+  const send = (proof, target = body, session = headers) => h.send(route, { ...target, ...proof }, session);
+  assert.equal((await send()).body.code, 'admin-passkey-required');
+  assert.equal((await send(await h.proof(headers, 'role', body, { verified: false }))).status, 403);
+  assert.equal((await send(await h.proof(headers, 'delete', body))).status, 403);
+  assert.equal((await send(await h.proof(headers, 'role', body), { ...body, id: ADMIN2 })).status, 403);
+  assert.equal((await send(await h.proof(headers, 'role', body), { ...body, admin: false })).status, 403);
+  const another = { ...headers, Cookie: `gymsid=${mintSession(ADMIN, 'c')}` };
+  assert.equal((await send(await h.proof(headers, 'role', body), body, another)).status, 403);
+  const proof = await h.proof(headers, 'role', body);
+  assert.equal((await send(proof)).status, 200);
+  assert.equal((await send(proof)).status, 403);
+});
 
 test('removes the account and everything attached to it', async t => {
   const h = await startServer(t);

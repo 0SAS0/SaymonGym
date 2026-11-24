@@ -1,0 +1,28 @@
+{$DOMAIN} {
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Restrict the application while bootstrapping or restoring.
+	@outsideMaintenance {
+		expression `"{$INVITE_ONLY:1}" != "1" || "{$CADDY_ADMIN_ONLY:0}" == "1"`
+		not remote_ip {$ADMIN_NET}
+	}
+	respond @outsideMaintenance 403
+
+	@disabled path /mcp /mcp/* /api/coach /api/coach/* /api/admin/coach /api/admin/coach/* /exercise-media /exercise-media/*
+	respond @disabled 404
+
+	@outsideAdmin {
+		path /api/admin /api/admin/*
+		not remote_ip {$ADMIN_NET}
+	}
+	respond @outsideAdmin 403
+
+	# Limit by request type so long, signed-in media uploads keep their own policy.
+	@auth path /api/login/* /api/register/* /api/pair/* /api/device-link/* /api/admin/passkey/options /api/account/delete /api/account/delete/options /api/watch/redeem
+	request_body @auth {
+		max_size 128KB
+	}
+
+	# Edge connection only. Caddy replaces client-supplied forwarding headers by default.
+	reverse_proxy saymongym-web:80
+}

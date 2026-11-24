@@ -12,7 +12,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { hashPassword, hashResetCode } from '../password.js';
-import { boundPort } from './helpers.mjs';
+import { adminProof, boundPort } from './helpers.mjs';
 
 const API = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SECRET = crypto.randomBytes(32).toString('hex');
@@ -67,6 +67,8 @@ const hashAt = (pw, ln) => new Promise((resolve, reject) => {
 
 async function startServer(t, { env = {}, users = [], creds = [], invites = [] } = {}) {
   pwHash ??= await hashPassword(GOOD);
+  const adminKeys = new Map(users.filter(u => u.admin || env.ADMIN_UIDS?.split(',').includes(u.id)).map(u => [u.id, softPasskey()]));
+  creds = [...creds, ...Array.from(adminKeys, ([id, key]) => key.row(id))];
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-pw-'));
   fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 });
   fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({ users, creds, subs: [], invites }));
@@ -74,7 +76,7 @@ async function startServer(t, { env = {}, users = [], creds = [], invites = [] }
     cwd: API, stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN, RP_ID: 'localhost',
-      PASSWORD_LOGIN: '1', TRUST_PROXY: '1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env
+      PASSWORD_LOGIN: '1', TRUST_PROXY: '1', TRUST_PROXY_PEERS: '127.0.0.1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env
     }
   });
   const h = { api: '', log: '', dataDir };
@@ -86,6 +88,8 @@ async function startServer(t, { env = {}, users = [], creds = [], invites = [] }
   h.api = `http://127.0.0.1:${await boundPort(child, () => h.log)}`;
   // Every request looks like the app talking to its own backend unless a test says otherwise.
   h.req = async (method, p, { body, cookie, ip = '198.51.100.1', headers = {} } = {}) => {
+    const adminKey = p === '/api/admin/user/password-reset' && adminKeys.get(cookie?.slice(7).split(':')[0]);
+    if (adminKey) body = { ...body, ...await adminProof(h.api, { Cookie: cookie, 'X-Forwarded-For': ip }, 'password-reset', body, adminKey) };
     const r = await fetch(`${h.api}${p}`, {
       method,
       headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin', 'X-Forwarded-For': ip, ...(cookie ? { Cookie: cookie } : {}), ...headers },
@@ -186,8 +190,8 @@ test('twenty failures from one address pause that address for every name; others
   assert.equal(r.status, 429);
   assert.ok(+r.headers.get('retry-after') > 0);
   assert.equal((await login(h, 'Ana', GOOD, '203.0.113.8')).status, 200);
-  // X-Forwarded-For is read from the right: a client-supplied entry in front changes nothing.
-  assert.equal((await login(h, 'Ana', GOOD, `192.0.2.99, ${ip}`)).status, 429);
+  // A list is not a valid address from the configured peer, so it falls back to the socket.
+  assert.equal((await login(h, 'Ana', GOOD, `192.0.2.99, ${ip}`)).status, 200);
   assert.ok(h.audit().some(e => e.ev === 'auth.throttled' && e.msg === 'password'));
 });
 
@@ -240,17 +244,13 @@ test('without TRUST_PROXY a forwarded address is ignored: the socket is who is c
   assert.equal((await h.req('POST', '/api/login/password', { body: {}, ip: '192.0.2.1' })).status, 429);
 });
 
-// Behind a proxy that hides the visitor, every request comes from one address. Whatever one client
-// sends from there must not pause anybody's passkey sign-in, passkey signup or phone pairing —
-// which were never throttled, and are not now.
-test('a flood from a shared address leaves passkey sign-in, registration and pairing working', async t => {
+test('a password flood on a shared address does not spend the separate passkey and pairing budgets', async t => {
   const key = softPasskey();
   const h = await startServer(t, {
     env: { TRUST_PROXY: '', INVITE_ONLY: '1' },
     users: [withPassword('u1', 'Ana')], creds: [key.row('u1')],
     invites: [{ code: 'GOODCODE', created: new Date().toISOString() }]
   });
-  for (let i = 0; i < 100; i++) await h.req('POST', '/api/login/options', { body: {} });
   for (let i = 0; i < 30; i++) assert.equal((await h.req('POST', '/api/register/options', { body: { name: 'X', code: 'JUNK' + i } })).status, 403);
   for (let i = 0; i < 30; i++) assert.equal((await h.req('POST', '/api/pair/redeem', { body: { code: 'JUNK' + i } })).status, 400);
   await Promise.all(Array.from({ length: 25 }, (_, i) => login(h, 'name' + i, 'wrong password')));
@@ -267,9 +267,10 @@ test('a flood from a shared address leaves passkey sign-in, registration and pai
   assert.equal((await h.req('POST', '/api/pair/redeem', { body: { code } })).status, 200, 'pairing');
   assert.equal(h.audit().some(e => e.ev === 'auth.throttled' && e.msg !== 'password'), false);
 
-  // With PASSWORD_LOGIN off nothing at all is counted.
+  // Passkeys have a request cap even when passwords are disabled.
   const off = await startServer(t, { env: { TRUST_PROXY: '', PASSWORD_LOGIN: '' } });
-  for (let i = 0; i < 100; i++) assert.equal((await off.req('POST', '/api/login/options', { body: {} })).status, 200);
+  for (let i = 0; i < 48; i++) assert.equal((await off.req('POST', '/api/login/options', { body: {} })).status, 200);
+  assert.equal((await off.req('POST', '/api/login/options', { body: {} })).status, 429);
 });
 
 test('the password routes keep the origin check: no login CSRF', async t => {
@@ -616,8 +617,8 @@ test('wrong reset codes for a name do not lock out its real code, and do not tou
   }
   assert.equal((await h.req('POST', '/api/login/password-reset', { body: { name: 'Bea', code, next: 'a brand new passphrase' }, ip: '198.51.100.246' })).status, 200);
 
-  // The cheap flood of the probe: five wrong passwords for Ana, then ten thousand junk codes for
-  // names nobody has, twenty per IPv6 /64 so no address is paused. Ana's count is still there.
+  // The cheap flood of the probe: five wrong passwords for Ana, then junk codes for
+  // names nobody has, spread over IPv6 /64s. The global recovery budget caps this traffic.
   for (let i = 0; i < 5; i++) assert.equal((await login(h, 'Ana', 'wrong password ' + i, `198.51.100.${150 + i}`)).status, 401);
   // Kept-alive connections: a fresh one per request would make this the slowest test in the file.
   const agent = new http.Agent({ keepAlive: true, maxSockets: 50 });
@@ -630,10 +631,9 @@ test('wrong reset codes for a name do not lock out its real code, and do not tou
     r.on('error', reject);
     r.end(JSON.stringify({ name: 'junk' + i, code: 'ZZZZ-ZZZZ-ZZZZ', next: 'whatever passphrase' }));
   });
-  for (let i = 0; i < 10000; i += 200) {
-    const batch = await Promise.all(Array.from({ length: 200 }, (_, j) => junk(i + j)));
-    assert.ok(batch.every(status => status === 400), 'no junk request was paused');
-  }
+  const batch = await Promise.all(Array.from({ length: 250 }, (_, i) => junk(i)));
+  assert.ok(batch.includes(400));
+  assert.ok(batch.includes(429), 'the global recovery cap also applies across addresses');
   assert.equal((await login(h, 'Ana', 'wrong password 5', '198.51.100.160')).status, 401);
   assert.equal((await login(h, 'Ana', GOOD, '198.51.100.161')).status, 429, 'the sixth wrong password paused the name');
 });

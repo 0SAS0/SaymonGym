@@ -236,7 +236,7 @@ export const openPasswordRegister = () => ui().openSheet(close => <PasswordRegis
    still open when the sheet closes is called off, and whatever a prompt answers after that is
    dropped: someone who backed out of removing a passkey must not have it removed by a prompt
    they no longer see. */
-export function ProveOwner({ passkey, password, onProof, explain = passwordError, danger = false, submitText }) {
+export function ProveOwner({ passkey, password, onProof, explain = passwordError, danger = false, submitText, accountDelete = false }) {
   const name = useStore(s => s.user?.name) || ''
   // A profile linked to the server's identity provider can answer with a fresh sign-in there
   // (api/oidc/routes.js providerProof). In a browser only: the phone's token is its own proof.
@@ -286,7 +286,7 @@ export function ProveOwner({ passkey, password, onProof, explain = passwordError
       <Button variant={main} icon="shield" disabled={busy} onClick={() => run(async () => ({ provider: true }))}>{t('Confirm with {0}', oidcLabel(config))}</Button>
       {(withPasskey || password) && <div style={{ height: 10 }} />}
     </>}
-    {withPasskey && <Button variant={withProvider ? undefined : main} icon="fingerprint" disabled={busy} onClick={() => run(signal => passkeyAssertion({ signal }))}>{t('Confirm with a passkey')}</Button>}
+    {withPasskey && <Button variant={withProvider ? undefined : main} icon="fingerprint" disabled={busy} onClick={() => run(signal => passkeyAssertion({ signal, accountDelete }))}>{t('Confirm with a passkey')}</Button>}
     {password && <form onSubmit={withPassword} noValidate>
       {withPasskey && <div className="dim small" style={{ margin: '14px 0 8px', textAlign: 'center' }}>{t('or with your password')}</div>}
       {/* Tells a password manager which account the password belongs to. */}

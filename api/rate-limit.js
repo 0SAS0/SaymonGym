@@ -128,6 +128,11 @@ export function createWindow({ max = 60, windowMs = MINUTE, maxKeys = 10000, now
   const over = e => e.count > max && now() - e.start < windowMs;
   const map = boundedMap(maxKeys, e => (over(e) ? 1 : 0));
   return {
+    retryAfter(key) {
+      const e = map.get(key);
+      if (!e || e.count < max) return 0;
+      return Math.max(0, Math.ceil((e.start + windowMs - now()) / 1000));
+    },
     /** Counts this request. Returns 0 when it is within budget, else seconds to wait. */
     take(key) {
       let e = map.get(key);

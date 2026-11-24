@@ -85,7 +85,7 @@ async function startServer(t, { env = {}, users = [], creds = [], deviceLinks } 
     cwd: API, stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN, RP_ID: 'localhost',
-      PASSWORD_LOGIN: '1', TRUST_PROXY: '1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env
+      PASSWORD_LOGIN: '1', TRUST_PROXY: '1', TRUST_PROXY_PEERS: '127.0.0.1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env
     }
   });
   const h = { api: '', log: '', dataDir };

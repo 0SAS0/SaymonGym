@@ -25,7 +25,7 @@ function mintSession(uid) {
 const ADMIN = 'u_adm_1', VICTIM = 'u_vic_1';
 const asAdmin = { Cookie: `gymsid=${mintSession(ADMIN)}`, 'Content-Type': 'application/json' };
 
-async function startServer(t) {
+async function startServer(t, env = {}, prepare = () => {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-admin-'));
   fs.writeFileSync(path.join(dataDir, 'secret'), SECRET, { mode: 0o600 });
   fs.writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify({
@@ -34,10 +34,11 @@ async function startServer(t) {
       { id: VICTIM, name: 'Mallory', created: new Date().toISOString() }
     ], creds: [], subs: [], invites: []
   }));
+  prepare(dataDir);
   const child = spawn(process.execPath, ['server.js'], {
     cwd: API, stdio: ['ignore', 'pipe', 'pipe'],
     // The drill-down and the live row with their contents: ADMIN_DATA_VIEW on (off is server-trainers.test.js).
-    env: { ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN: 'http://localhost:8080', RP_ID: 'localhost', ADMIN_DATA_VIEW: 'on' }
+    env: { ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN: 'http://localhost:8080', RP_ID: 'localhost', ADMIN_DATA_VIEW: 'on', ...env }
   });
   const h = { api: '', log: '', dataDir };
   child.stdout.on('data', d => h.log += d);
@@ -53,6 +54,54 @@ async function startServer(t) {
   h.get = async p => { const r = await fetch(`${h.api}${p}`, { headers: asAdmin }); return { status: r.status, body: await r.json() }; };
   return h;
 }
+
+test('disabled Coach admin actions and MCP do not expose provider operations', async t => {
+  const h = await startServer(t, { COACH_DISABLED: '1', COACH_CHATGPT_PLAN: 'on', MCP: 'off', API_TOKENS: 'off' }, dir => {
+    fs.writeFileSync(path.join(dir, 'coach.json'), JSON.stringify({ enabled: true, provider: 'compatible', providerOptions: { compatible: { baseUrl: 'http://127.0.0.1:1' } } }));
+  });
+  const status = await h.get('/api/admin/coach');
+  assert.equal(status.body.disabledByEnv, true);
+  assert.equal(status.body.runtime.ok, false);
+  assert.equal((await h.get('/api/config')).body.coach, null);
+  for (const suffix of ['test', 'models', 'discover', 'chatgpt/start', 'chatgpt/finish', 'disconnect', 'config', 'connect']) {
+    const r = await fetch(h.api + '/api/admin/coach/' + suffix, { method: 'POST', headers: asAdmin, body: '{}' });
+    assert.equal(r.status, 503, suffix);
+    assert.equal((await r.json()).code, 'off');
+  }
+  for (const route of ['/api/tokens', '/api/token/data', '/.well-known/oauth-authorization-server', '/mcp']) {
+    assert.equal((await h.get(route)).status, 404, route);
+  }
+});
+
+test('Linux restricts existing state files and keeps replacement writes restricted', async t => {
+  if (process.platform !== 'linux') return t.skip('POSIX permissions require Linux');
+  const h = await startServer(t, {}, dir => fs.writeFileSync(path.join(dir, `state-${VICTIM}.json`), '{}', { mode: 0o644 }));
+  const state = path.join(h.dataDir, `state-${VICTIM}.json`);
+  assert.equal(fs.statSync(state).mode & 0o777, 0o600);
+  const r = await fetch(h.api + '/api/data', {
+    method: 'PUT', headers: { Cookie: `gymsid=${mintSession(VICTIM)}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: { workouts: [], routines: [] } })
+  });
+  assert.equal(r.status, 200);
+  assert.equal(fs.statSync(state).mode & 0o777, 0o600);
+});
+
+test('existing and new invite audit events do not retain the invite code', async t => {
+  const h = await startServer(t, { INVITE_ONLY: '1', AUDIT_LOG: '1' }, dir => {
+    fs.writeFileSync(path.join(dir, 'audit.log'), JSON.stringify({ id: 1, ts: Date.now(), ev: 'admin.invite.create', msg: 'OLD-CODE' }) + '\n');
+  });
+  const r = await fetch(h.api + '/api/admin/invites/new', { method: 'POST', headers: asAdmin, body: '{}' });
+  assert.equal(r.status, 200);
+  const { invite } = await r.json();
+  const log = fs.readFileSync(path.join(h.dataDir, 'audit.log'), 'utf8');
+  assert.ok(!log.includes(invite.code));
+  assert.ok(!log.includes('OLD-CODE'));
+  const rejected = await fetch(h.api + '/api/register/options', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Outside' })
+  });
+  assert.equal(rejected.status, 403);
+  assert.equal((await rejected.json()).code, 'invite');
+});
 
 // One good entry of each kind, so every case below can say what survived as well as what did not.
 const okW = { id: 'w1', name: 'Fine', d: '2026-09-18', start: 1, end: 2, entries: [{ id: 'e', sets: [{ w: 10, r: 5, done: true }] }] };
